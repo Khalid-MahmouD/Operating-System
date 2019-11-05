@@ -1,0 +1,146 @@
+Mechanism: Limited Direct Execution
+
+Virtualize the CPU OS needs to share physical CPU among many jobs running seemingly at the same time.
+The basic idea is simple run one process for little while, then run another one By Time Sharing.
+
+few challenges:
+	performance : adding excessive overhead to the system.
+	control	: giving control to CPU , OS in charge of resources; without control, process
+		  could simply run for ever access information he should not be allowed access.
+Both hardware and OS support required.
+
+6.1 Basic Technique: Limited Direct Execution
+to make a program run as fast as one might expected, just run program directly on CPU
+OS -> creates a process entry in process list(keep all running programe)
+	allocate some memory pages for it 
+	load programe code into memory from disk
+	locates its entry point the main()  Set up(initializing) stack with argc/argv
+	Clear registers ,Execute call main()
+
+					program -> Run main()
+						   Excute return from main()
+	Free memory of process
+	Remove from process list	
+(without any limits, yet)
+
+A few problems rised in our quest  -> (Control)how os make sure the programe does not doing anything we don not want it to do.
+(Context switch) how does OS stop running process and switch to another process,(Time sharing requied for virtualize the CPU).
+
+
+OS wouldn’t be in control of anything and thus would be “just a library"
+
+
+6.2 Problem #1: Restricted Operations
+Restricted Operations such as I/O request to disk, or gaining access to more system resources such as CPU or memory.
+how without giving process full control over the system OS and Hardware do together to do so ?
+
+PROTECTED CONTROL TRANSFER modes of execution:
+		->user mode,Applications do not have full access to hardware resources.
+		->kernel mode, the OS has access to the full resources of the machine.
+
+trap instruction into Kernel mode, and return-from-trap backe to User mode, OS tells hardware where the trap table on memory.
+
+One approch: --> would ( let any process do whatever it wants in terms of I/O and other related operations ), 
+doing so prevent  construction of many kinds of systems that are desirable, like protection would be lost, 
+the process could read or write entire disk.
+
+then take us to new Approch 
+1) mode (processor mode) USER MODE; 
+  code that run in user mode restricted in what it can do,(الكود ليه دور محدد )
+  can't issue I/O request; doing so raise exception;
+  the OS would then likely kill the process.--
+
+2) In contrast to user mode is KERNEL MODE,
+   OS run in it, code that run in kernel mode can do what it  likes,
+   including issue I/O request, and all restricted instructions
+
+what should process in user mode do when it wishes to perform some kind of privileged operation such as reading from disk(or, I/O) ?
+all modern hardware provides the ability for user programs to perform a system call.
+I)To execute a system call, 
+    programe excute a special trap instruction simultaneously jump into kernel and raises the privilagelevel to kernel mode;
+    when finished OS calls a special return-from-trap instruction, 
+    returns into user program  simultaneously  reduce the privilagelevel to user mode;
+II)hardware must save enough of caller's register state in order to able to return correctly (when OS issue the return-from-trap instruction),
+   and that done by push (PC, flags, and a few other registers on to pre-process kernal stack), 
+III)the return-from-trap will pop these values off the stack  and resume execution of the user-mode program.
+
+one other thing left ((how does the trap know which code to run inside the OS)) (can't specify an address to jump to)? 
+doing so make program jump anywhere into kernal which is a bad idea; kernel must carefully control which code executes upon a trap. 
+and that done by setting up trap-table at boot time.
+I)@boot the machine is in kernel mode, so it (free configure machine),
+   OS thus tell the hardware what code to run when special exceptional event occur.
+OS informs the hardware the  loacation of these trap handlers, with some kind of special instructions, 
+ II)once he informed, hardware remeber location of these handlers until next reboot;
+the hardware knows what to do (i.e.,what code to jump to)when systemcalls and other exceptional events take place.
+
+privilage operation (tell hardware where the trap table), try this instruction if user mode you won't able.
+
+-we assume each process has a kernel stack where registers are saved and restored from (by hardware) when transitioning into and out of kernel.
+-we have two phases in the LDE protocol. 
+	I)first at boot time the kenel initializes trap-table, and CPU remember its location, via privilage instruction.
+	II)second when running process, kernel setup few things (e.g Create entry for process list, allocate memory)
+		switch to CUP mode running the process; ((wishes to issue a system call)), traps back ito OS,
+                which handles it and return control to process via return-from-trap, 
+                then process completes its work and returns from main();(exit() exit program at this point)
+                the OS cleans up and we are done;
+
+
+6.3 Problem #2: Switching Between Processes
+runing process on CPU means OS not running.if the OS not Running how he can do any thing at all ?
+how we can gain control from CPU to OS, so he can switch between processes.
+
+-A Cooperative Approach: Wait For System Calls
+ process that run for too long give up CPU so that OS can decide to run other task.
+in [M11], [A79] ->||
+ what kind of these processes? transfer control to OS 
+BY MAKING SYSTEM CALL, for example:
+	open file, send message, creat a new process,
+	these kind of systems explicit include yeild system call, does nothing except transfer control to OS.
+BY SOME APPLICATION, for example:
+	divide by zero, access memory you should not to be able to access, it generatr trap OS take control (often terminate the process)
+in cooperative scheduling system, OS take control of CPU waiting for SYSTEM CALL, or an illegal opetation.
+
+problem appear !!
+Passive Approach-> what if the process get in infinite loop, and never makes system call, what can OS Doing?
+
+-A Non-Cooperative Approach: The OS Takes Control(عفية بجد عفية بيخدع الهارد وير وكل شوية ميلي ثانية بياخد الكنترول تاني )#thug_life أيموشن نضارة وسلسلة
+ when process gets stuck in an infinite loop !! 
+ without some additional help from hardware, OS can't do so much when the process refused to make system call(mistake), and return control to OS.
+ How can OS gain Control ? is this case?
+
+ [M+63]timer interrupt, timer device can be programmed to raise interrupt every Xmillisecond; so Currently running process haled(stop), 
+       and pre-configured interrupt handler in the OS Run. 
+       at this point OS regained control of CPU, can do what it pleases ; #معلم 
+       stop the current process, and start a different one;
+
+ USE THE TIMER INTERRUPT TO REGAIN CONTROL when process act in an non-cooperative fashion.
+ this hardware feature is essential in helping the OS maintain control of the machine;
+
+ at system call, OS -tells> hardware -which> code to run when timer interrupt occurs, at boot time the OS does that, 
+ and start the timer (privilage Operation) once timer Begun. OS can feel safe Control will eventually be returned to it, 
+ OS free to run user Programe , we can turn off timer,
+
+ hardware has some resposibility when interrupt occurs; save enought of the state(registers onto kernel stack) of 
+ current running process when interrupt occured, So return-from- trap instruction will able ro resume the running programe correctly;
+
+-Saving and Restoring Context
+ OS regained control, wheather co-opetatively via system call, or more forcefully by timer interrupt.\
+ decision have to be made : wheather to continue running- process or switch to different one, this part made by (Scheduler);#عبد صغير بس صايع
+
+ if decision made to switch OS does Context Switch(low level assembly)at which save a few  register values for the current-excuting process,(onto its kernel stack)
+ and restore a few for the soon-to-be-excuting process.(from its kernel stack).
+ important -> -> when the return-from-trap instruction excuted OS resume excutiong another process instade of returning to process that was running.
+
+ to save context of current running process. the OS excute assembly Code to save General purpose registers,(PC, Kernelstack Pointer) and then restore them for
+ soon-to-be-excuting process, by switching stackes Kernel enter Call to switch context in one process (interrupt) and returns in the context of anther(soon-t0-be-excuting)
+ when OS excute a return-from-trap instrcution the soon-to-be-excuting process become the currently running process. and the context switch is complete.
+	switches context by changing the stack pointer to use B'kernel stack (not A's) 
+
+ 
+Worried About Concurrency?
+What happens if, during interrupt or trap handling, another interrupt occurs?
+OS handles these situations:
+Disable interrupts during interrupt processing
+Use a number of sophisticate locking schemes to protect concurrent access to internal data structures.
+
+

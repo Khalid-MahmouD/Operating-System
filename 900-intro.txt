@@ -1,0 +1,103 @@
+-introduction to Operating Systems
+Von Neumann model, on running a programe, processor fetch instruction from memory, decode it, figuer out which instruction it is !!, excute it(add, jump, check condition) then move to the next instruction.
+
+the body of software which call operating systems, resposible for making it easy to run programe like sharing memory, run many in same time, interact with devices;
+
+refer to OS as a Virtual Machine take a physical resources and transforms it into a more general powerful easy to use virtual form of it self.
+
+to tell OS what to do and use the features of virtual machine, 
+OS provides Interfaces(APIs) to call;
+OS exports  a System Calls for applicaion;
+OS provides a Stadard Library to application;
+
+
+OS known as resource manager; 
+allows many programe to run (that sharing CPU), 
+and many programe at the same time access thier own data and instruction (that sharing memory), 
+and many programe to access devices(that sharing disks). and OS work on manage those resources, 
+doing so efficiently or fairly or indeed with many other possible goals in mind. superVisor master control program.
+
+
+
+2.1 Virtualizing CPU
+local>>gcc -o cpu cpu.c -Wall
+local>>./cpu "A"
+one programe one cpu make sense;
+local>>./cpu A & ; ./cpu B & ; ./cpu C & ; ./cpu D &  " in batch remove ;"
+four of these programe running at the same time with only one processor;
+illusion , have a very large number of CPUs, turning a single CPU to an infinite number of CPUs,
+allow many programe to seemingly run at once;
+
+you can run or stop them, or tell OS which to run, with help of interfaces(APIs) use to communicate your desire to OS;
+
+New Question what if two programe want to run at particular time, which should run. answerd with OS POLICY , mechanisms (such as the ability to run multiple programs at once)
+
+
+2.2 Virtualizing Memory
+Memoru is just array of bits; 
+read it should have an address, 
+write (or update) it should have data and address;
+Running programe it(the mem) accessed all the time, 
+datastructure of program kept in memory and all  the instructions, 
+accessed by some instruction load,store;
+local>>gcc -o mem mem.c -Wall
+local>>./mem
+malloc() allocate some memory it equavilant to new in c++
+getpid() process idenrifier uniqur per running process;
+one programe >> As the program runs, it slowly updates(allocated memory address at XZXXXXZ) the value and prints out the result 
+
+prompt> ./mem &; ./mem &
+two programe at time
+each one allocate memory at same address, it seems each updating values at XZXXXZ address independently !!
+yes !! .. each runing programe has its own private memory, instead of sharing the same physical memory with other running programs;
+OS is Virtualizing memory, each process has its own private virtual address space , Maping it to actual or physical address.
+the address it have affect on nothing, concerned to have physical memory all to itself.
+reality is physical memory is a shared resources, managed by OS.
+
+
+2.3 Concurrency
+Unfortunately, the problems of concurrency are no longer limited just to the OS itself. Indeed, modern multi-threaded programs exhibit the same problems.
+problems must be addressed as workin on many processes;
+load value, increment it, store it back into memory;
+These three instructions do not execute atomically. Problem of concurrency happen.
+
+
+
+2.4 Persistence
+
+DRAM vs Hard Driver; store values in a volatile  vs store data persistently.
+to manage storing data persistently need : software and hardware;
+	hardware : hard drivers or SSDs
+	software : File system is usally manage disk responding to user action like storing or creating.
+no Virtualizing in hard disk can OS provide ? user will want to share this info that is this file.
+
+open(), write(), and close()system calls are routed to the part of OS called the file system, which handles the requests.
+what File system do ?
+-Figure out where on disk this new data will reside, keep traking of it in various structures the file system maintains.
+-Doing so needs I\O issuing requests to underlying storage device, to eighter read existing structures or update it.
+
+Fortunately, the OS provides a standard and simpleway to access devices through its system calls. Thus, the OS is sometimes seen as a standard library.
+
+to handle system craches while writing ?
+-intricate write protocol, such as journaling or copy-on-write;
+-carefully ordering writes to disk to ensure that if failuer occures during the write sequance.
+
+
+2.5 Design Goals
+
+most basic goal is to build up some abstraction in order to make the system easy to use; 
+Abstraction is fundamental to every thing in CS, makes it possible to write large problem by dividing it into small pieces; such as Write c no care of assembly
+write assembly no care about logicgates, logic gates of process no care about trasistors;
+
+high performance, another way to say minimized the OVERHEADS of the OS;
+overhead is arise in many forms, extra time(more instruction), extra space(memory or disk) we should minimize them.
+
+protection between applications; many programs at same time, want to make sure bad behavior or malicious one  does not harm others, so harm OS itself .
+isolatiob heart of one of the main principles underlaying an operating systems
+
+High degree of reliability runung non-stop
+
+energy-efficiency;
+security against malicious application 
+mobility os run on a smaller and smaller devices;
+

@@ -1,0 +1,132 @@
+low level mechanisms of running processress (context switching ).
+we have to understand high level policies that an OS scheduler employs;
+series of scheduling policies (disciplines)
+process running on the system called (workload)
+
+7.1 Workload Assumptions
+these Assumtions unrealistics but it is alright, because we will relax them as we go.
+Assumption about process some times called jobs, that are running sysyem:
+1.Each job runs for same amount of time.
+2.All jobs arrive at the same time.(t=0, t=x sec );
+3.All jobs only use CPU (NO I/O, NO Disk load)
+4.The Run time of each job is known.(make the scheduler omniscient)
+
+7.2 Scheduling Metrics 
+way enable us to compare  between different scheduling policies.
+for simplicity we introduce a simple single mertric: turnaround time.
+           T(turnaround) = T(completion) - T(arrival)
+time at which the job completes minus the time at which the job arrived in the system.
+for assumption of all jobs arrive at the same time for now T(arrival) = 0;
+           T(turnaround) = T(completion);
+all change when we relax aforementioned(مذكور مسبقا) assumptions.
+turnaround time is a performance metric, another metric is fairness .
+performance and fairness are often at odd in scheduling;
+optimize performance but at the cost preventing a few jobs from running, thus decreasing fairness.
+
+7.3 First In, First Out (FIFO)
+the most basic algorithm, first come, first served.
+3 jobs arrived at same time A befor B befor C each job runs for 10 seconds, what Average turnaround time?
+(10 + 20 + 30)/3 = 20;
+
+lest's relax one of our Assumptions, assumption 1, no longer each job run for the the same amount of time.
+different lengths can lead to trouble for FIFO Scheduling,
+Example: 3 jobs A runs for 100 second while B and C runs for 10 second each, what Average tuenaround time?
+(100 + 110 + 120) / 3 = 110,  make FIFO perform poorly.
+convoy effect, where number of relatively-short potential consumers of resources get queued behind a heavyweight resources consumer.
+#محل خضار
+#get stuck behind the family preparing for some upcoming nuclear winter.
+problem ->How can we develop a better algorithm to deal with our new reality of jobs that run for different amounts of time ?
+
+7.4 Shortest Job First (SJF)
+Solved -> it runs shortest job first, then the next shortest, and so on.
+take above Example but using SJF as our Scheduling policy.
+running B and C befor A reduce average turnaround time from 110 to (10 + 20 + 120)/3 = 50; more than factor two improvement.
+all arrive at the same time give SJF an optiaml algorithm.
+
+#Scheduler can performa context switch, stopping one running process temporarily and resuming (or starting) another: preemptive Schedulers.
+
+let's relax another. we can target assumption 2, we assume the jobs can arrive at any time instead of all at once.
+assume A arrived at t = 0,runs for 100 second, but B and C arrived at t= 10 runs for 10 second each;
+B and C arrived shortely after A ((but they forces to wait until A completed)), suffer from ((convoy problem)).
+arrerage turnaround time = (100 +(110 -10)+(120 -10) ) /3 = 103.33;poorly performance on different amount of work time.
+
+7.5 Shortest Time-to-Completion First (STCF)
+from previous example , scheduler can do something else when B and C arrive; it can preempt job A and decide to run another job,
+perhaps continuing A later. (SJF) is non-preemptive scheduler, and suffer from convey problem.
+theres is a scheduler does that add preemptiong to (SJF) called the shortest time-to-completion first(STCF), or preemptive shortest Job First(PSJF) scheduler.
+compare between the newly arrived job and running one , which hase the least time left, and then schedules that one.
+average turnaround time = ( (120-0) +(20-10) + (30-10) ) / 3 = 50 sec. 
+STCF is provably optimal; given that (SJF) is optimal when all jobs arrive at the same time.
+
+Thus, if we knew that job lengths, and jobs only used the CPU, and our only metric was turnaround time, STCF would be a great policy. 
+time-shared machines changed all that.
+new metric born: response time , user sit at terminal and demand ((interactive performance from system)).
+response time ? time from when the job arrives in a system to the first time it scheduled(get ready to run )or about to run.
+	      T(response) = T(firstrun) - T(arrival)
+((response time)) of each job is as follows:
+   ( 0 for A ,0 for B, 10 for C average 3.33) C have to wait 10 seconde until B finished, first run =20, arrival = 10.
+#STCF and related disciplines are not particularly good for response time.
+if 3 jobs arrived at the same time 3rd job have to wait the two previous to run in thier entirety before being Scheduled just once.
+problem -> how can we build a scheduler that is sensitive to response time?
+
+7.6 Round Robin (RR)
+solved by introduce a new scheduling algorithm. as Round-Robin(RR)[K64]
+instead of runing job for completion, RR run job for time slice(scheduling quantum) and then switches to the next job in the run queue, it repeatedly
+until finished, time slicing.
+note that the length of a time slice must be multiple of the timer-interrupt period;
+A, B, C ( arrive at the same time in the system), each run for 5 second. 
+A (SJF) scheduler runs each job to completion befor running another.( 0 <S-(A)-E> 5 <S-(B)-E> 10 <S-(C)-E> 15 );
+RR in contrast, with a time-slice  1 second will cycle through the jobs quickly.
+RR average time = ( 0 + 1 + 2 ) / 3 = 1;
+SJF average response time  (0 + 5 + 10)/3; start - arrival
+the shorter time, the better the performance of RR in reponse-time metric(actually fair thing).
+make the time too short is a problem: 
+context switch will dominate overall performance, deciding length of time slice present a trade-off to a system designer,
+making it long enough to amortize the cost of switching without making it so long that is the system is no longer responsive.
+
+context switch rise from OS actions of saving, restoring a  few registers,
+they build up a great deal of state in CPU caches, TLBs, branch predictors,
+and other on-chip hardware. 
+
+??Switching to another job causes this state to be flushed and new state relevant to the currently-running job to be
+??brought in, which may exact a noticeable performance cost.
+
+
+A finished at 12 B at 14 C at 15 prety awful!, RR is the worst in turnaround time is out metric.
+RR exactly stretching out each job by running each job for a short bit before moving to the next.
+RR is fair devides CPU among active processess on a small time scale, perform poorly on turnaround time metric.
+this is trade of.
+
+trade-off is common in systems; you can’t have your cake and eat it too.
+and we have two assumption: 3rd assumption (no I/O) 4th kwon run time.
+if you are willing to be unfair, you can run shorter jobs to completion SJF,
+
+7.7 Incorporating I/O
+Relax assumption 3 - of course all programs perform I/O.
+program take no input produce same output, one without output (It does not matter at all dude, no one will notice!! ),
+-schedular  has decision to make when  a job initiates an I/O request, not using CPU the current job, its blocked waiting for I/O completion.
+blocked for a few milliseconds or longer depend on time take to load from drive, thus the scheduler should schedule another job on CPU at time.
+-scheduler also has to make decision when I/O completes. if it happend OS gain control move job from block to ready, can even decide
+to run the job at that point.
+
+we have two jobs A and B which each need 50ms of CPU time, 
+A runs for 10 seconde and issues an I/O request(assume here that I/Os each take 10 ms),
+B use the CPU for 50 ms and perform no I/O.
+
+A runs first and B then After (poor use of Resources).
+A disk A disk A disk A disk A disk B B B B; 
+(STCF) A broken up to 5 10-ms sub-jobs, B single 50-ms, run one job without considering how to take I/O into.
+
+independent Job, system starts, its choice is wheather to schedule 10-ms A or 50-ms B. With STCF choose A.
+then it complents, B is left , another sub-job A is submitted, it stop B and runs for 10 sec.
+Overlap
+
+
+overlap operations to maximize the utilization of systems.
+Overlap is useful in many different domains, including when performing
+disk I/O or sending messages to remote machines; in either case,
+starting the operation and then switching to other work is a good idea,
+and improved the overall utilization and efficiency of the system.
+
+
+

@@ -1,0 +1,117 @@
+preocess it is a running programe, program is a lifless thing, that program sit on disk with static data and instructions, OS get them running trasforming into useful program;
+
+want run more than one program at once !! web browser,mail program, a game, amusic player, and so forth.
+Doing so makes system so easy, no care about CPU is avalible or not .
+
+OS provide -->> illusion by virtualizing CPU. 
+Running one process, then  stopping  it and running another process, this basic technique called time sharing;
+allow user to run many processes as much as he want, the potential cost is performance, will run more slowly if CPUs must shard; exit in all moders OSs
+
+what we need to implement Virtualizition Well ??
+Low-Level machinery (mechanisms).
+High-level intelligence (Policy - schedualing policy).
+
+Low-level machinery called mechanisms -->> methods or protocals that implement a needed piece of functionality.
+text-switch give OS ability to stop running one program and start running another programe.
+
+
+Intelligence in the form of policy -->> algorithms for making some kind of decision.
+many programs to run of CPU, which program should cpu run ?
+schedualing policy is make this decision using:
+historical information ->  which program run more over last minute
+workload knowlage -> what type
+performance metrics -> 
+
+4.1 The Abstraction: A Process
+
+to understant what constitutes the process, we have to under stand machine state :what a programcan read or update when it is running.
+component of machine state that comprises a process is Memory and Registers,special registers;
+
+Memory instruction and data thar running programe reads and writes all lies on memory.
+memory is the address space 
+ 
+Registers many instruction read and update explicity;
+special registers 
+	PC programe counter which instrcution of program is currently being excuted.
+	stack pointer and associated frame pointer :manage stack for function parameter, local var, return address.
+
+Finally, programs often access persistent storage devices too. Such I/O informationmight include a list of the files the process currently has open.
+
+
+4.2 Process API
+these APIs available on any modern  OS.
+interfaces OS provides:
+
+-Creat -->> type commend on shell or double click on application. OS is invoked to creat a new process to  run the program you have indicated.
+-Distroy -->> include interface that distroy processess forcefully, many run and exit themselfes, many with to kill, Halt a runaway process
+-Wait -->> to wait for a process to stop running .
+-Miscellaneous Control -->> Some kind of method to suspend a process and then resume it.
+-status -->> Get some status info about a process.
+
+
+4.3 Process Creation: A Little More Detail
+
+how programe transformed into proccess ? how OS get program up and running ? how does process creation actually work ?
+
+What OS doing ?
+first, load data and any static data into memory (address space) . programe reside(exits initially) on disk in some excutable formats,
+loading process requires the OS to read those bytes from disk into memory somewhere.
+loading process : eagerly, moders OSs load pieces of code or data only as they are needed during program excution.
+(swapping,paging)
+
+before running the process, OS need to
+-allocate memory on  run-time stack.
+  stack is used for local variables, function parameters, and return addresses, allocate them and given to process.
+-initialize the stack with arguments, specially main() parameters -->> argc and the argv array
+
+-create some initial memory for heap 
+   heap is used for explicitly requested dynamicallyallocated data, linked lists, hash tables, trees.
+   calling malloc() gain space 
+   calling free() free this space
+heap at first is a small the program runs, and requests more memory via the malloc() library API, the OS may get 
+involved and allocatemorememory to the process to help satisfy such calls.
+
+- other initialization tasks related to I/O UNIX file Description (input, output, error) ,
+  let programs easily read input from the terminal as well as print output to the screen
+
+- start the programrunning at the entry point, namely main(). By
+jumping to the main() routine (through a specialized mechanism ),let CPU take all controll to the created process, and thus program begins its excution.
+
+=small picture ( By loading the code and static data into memory, by creating and initializing
+		a stack, and by doing other work as related to I/O setup, the OS
+		has now (finally) set the stage for program execution.)
+
+4.4 Process States
+different states a process can be in at a given time:-
+
+-Running: the process is running on the process, it is in excuting instruction;
+
+-Ready:process is ready, but OS has chosen not to run it at the given moment;
+
+-Blocked:operations not ready until some other event take place; (i.e..When a process initiates an I/O request to a disk, 
+	it becomes blocked and thus some other process can use the processor).
+		-Being moved from ready to running means the process has been scheduled.
+		-being moved from running to ready means the process has been descheduled.
+		-Once a process has become blocked OS will keep it as such until some event occurs(e.g.,I/O completion),
+			he processmoves to the ready state again.
+
+4.5 Data Structure
+The OS has some key data structures that track various relevant pieces of information.
+
+To track the state
+of each process,
+-process list for all processes that are ready, 
+  as well as some additional informationto track which process is currently running.
+  The OS must also track,in some way, blocked processes; when an I/O event completes, the OS
+  should make sure to wake the correct process and ready it to run again.
+
+a process is stopped, its register state will be saved to thismemory location;
+by restoring these registers (i.e., placing their values back into the actual physical
+registers), the OS can resume running the process.
+Context SWitch.
+
+final state process exited but no cleaned up(Zombi state), allows other processes to examin return Code and see if it exit successfully .
+When finished, the parent will make one final call (e.g., wait()) to wait for the completion of the child.
+
+Process Control Block (PCB), fancy way of talking about a C structure that contains information about each process
+ 
