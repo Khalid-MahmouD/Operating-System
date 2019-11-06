@@ -1,0 +1,151 @@
+instade of optimizing turnaround time or response time, a scheduler might instead try to guarantee that:
+ each job obtain a certain percentage of CPU time.
+(fair-share) or (proportional-share), lottery scheduling;
+basic idea quite simple, hold a lottery to determine which process run next, one run more often have more chances to win.
+
+# how we can design a scheduler to share the CPU in a proportional manner ? what mechanisms ? how effictive are they ?
+
+9.1 Basic Concept: Tickets Represent Your Share
+tickets, which represent the share of a resource that a process should receive. (حصتي كام يا معلمي )؟
+example: A, B-> A has 75 tickets while B has only 25 tickets. what we would like is for:
+A recives 75% of CPU and B the remainning 25%, achieves this probablilistically .
+
+holding lottery, the scheduler then picks a winning tickets which is from (0,99), 
+and it is straightforward: the scheduler must know the number of tickets(100),
+A hold tickets from 0 to 74 ,
+B hold tickets from 75 to 99,
+the winning ticket simply makes A or B runs, scheduler then load state and run the winning process.
+63 85 70 39 76 17 29 41 36 39 10 99 68 83 63 62 43 0 49 49
+A  B  A  A  B  A  A  A  A  A  A  B  A  B  A  A  A  A A  A
+
+B runs for 4 times (20%) instade of desired 25%,
+However, the longer these two jobs compete, the more likely they are to achieve the desired percentages.(كل ما بتشغلهم لفترة اطول كل ما هتقرب من النسبة المطلوبة)
+
+#USE RANDOMNESS.
+three advantage for using Random approches.
+
+first avoids strange corner-case behaviors (traditional algorithm may have trouble handling).
+for example LRU page replacement LRU performs pessimally for some cyclic-sequential workloads. Random, on the other hand, has no such worst case.
+
+second lightweight, requring little state to track alternatives.
+traditional fair-share scheduling algorithm, track how much CPU each process has received requires pre-process accounting,
+which must be updated after running each process.
+doing so randomly necessitates only the most minimal of pre-process state (number of tickets each has)
+
+finaly it can be fast. generating random number is quick, making decision is also.
+the faster the need, the more random tends towards pseudo-random.
+
+
+#TIP:USE TICKETS TO REPRESENT SHARES
+ The ticket is used to represent a process’s share of the CPU.(واخد اد اية من المركزي)
+
+
+9.2 Ticket Mechanisms
+manipulate tickets in different and sometimes useful ways.
+
+ticket currency. currency allows a user with a set of tickets to allocate tickets among their own jobs in whatever currency they would like,
+system automatically convert said to correct global value.
+users A and B have each given 100 tickets.
+user A running two jobs A1 and A2 and give them each 500 tickets (1000 total),
+user B running only one job and give it 10 tickets(total 10),
+system will convert A1's and A2's allocation from 500 each in A's currency to 50;
+B1's 10 tickets will be converted to 100 tickets.
+global ticket currency (200 total) lottery will held over.
+
+ticket transfer.process can temporarily hand off its tickets to another process. this ability is useful (clint/sever) setting.
+clint process sends message to sever asking it to do some work on the clint's behalf.(حيث ترسل عملية العميل رسالة إلى خادم تطلب منه القيام ببعض الأعمال نيابة عن العميل.)
+to speed up the work, clint can pass tickets to the server and thus try to maximize the performance of the server while handling clint's request.
+finish work, server transfers the tickets back to the client and all is as befor.
+
+
+Finally, ticket inflation.
+process can temporarily rais or lower the number of tickets it owns.
+applied in an environment where a group of processes trust one another;
+else a greedy process could give itself a vast number of tickets and take over the machin;
+such a case, if any one process knows it needsmore CPU time,
+it can boost its ticket value as a way to reflect that need to the system, all without communicating with any other processes.
+
+
+9.3 Implementation
+all we need a good randon number generator to pick winning ticket, data structure track the process(linked list), and total numebr of tickets.
+let's assume we keep the process in a list.
+example: A,B and C with some number of tickets.
+To make scheduling decision, we first have to pick a random number(the winner) from total number of tickets(400), let's say we pick 300;
+Then, we simply traverse the list, with counter tells us the winner >.
+while(current){
+ counter = counter + current-> tickets;
+if(counter > winner)break;
+current = current ->next
+}
+head-> job:A tix:100 -> job:B tix:50 -> job:C tix:250 -> null
+first counter 100, 100 > 300 ? no : counter = 150 > 300 ? no : counter = 350 > 300 :yes for sure.
+job C the winner.
+
+for most efficient, organize list in sorted order from highest to lowest number of tickets.
+The ordering does not affect the correctness of the algorithm;
+
+9.4 An Example
+two jobs same number of tickets and same run time(R, which will be vary).
+we'd like each job to finish at roughly same time, because of randomness one job finishes befor the other.
+unfairness metric, Uwhich is simply the time the first job completes divided by the time that the second job completes.
+if R=10 1st job finishes at time 10 and second and time 20, U = 10/20 = .5;
+when both finishe at nearly time U will close to 1; perfect fair-share U = 1;
+
+As you can see from the graph, when the job length is not very long, average unfairness can be
+quite severe. Only as the jobs run for a significant number of time slices
+does the lottery scheduler approach the desired outcome.
+
+
+9.5 How To Assign Tickets?
+
+One approach is to assume that the users know best; in such a
+case, each user is handed some number of tickets, and a user can allocate
+tickets to any jobs they run as desired. However, this solution is a nonsolution:
+it really doesn’t tell you what to do. Thus, given a set of jobs,
+the “ticket-assignment problem” remains open.
+
+9.6 Why Not Deterministic?
+why use randomness at all?
+give us a simple scheduler, it occasionally will not deliver the exact right proportions, especially over short time scales.
+
+stride scheduling, a deterministic fair-share scheduler,straightforward.
+Each job in the system has a stride, which is inverse in proportion to the number of tickets it has.
+we can compute the stride of each by dividing each job by larg number by the number of tickets of each process has been assigned.
+example: with jobs A, B, and C, with 100, 50, and 250 tickets 
+larg number = 10000, by each job tickets we obtain the following stride value for A,B and C : 100, 200, 40;
+every time a process runs we will increment a counter for it (Pass value) by its stride to track its global progress.
+
+The scheduler then uses the stride and pass to determine which process should run next.
+# The basic idea is simple: at any given time, pick the process to run that has the lowest pass value so far;running process, 
+increment pass counter by its stride.
+
+//pseudocode implementation.
+current = remove_min(queue); // pick client with minimum pass
+schedule(current); // use resource for quantum
+current->pass += current->stride; // compute next pass using stride
+insert(queue, current); // put back into the queue
+
+pass values initially at 0,with stride values of 100, 200, and 40.
+low pass value, suppose we pick A,
+A runs; when finished with the time slice, update its pass value to 100.
+B runs; whose pass value is set to 200.
+C runs; whose pass value is incremented to 40.
+
+at this point the algorithm pick lowest pass value, which is C's value.
+run, updated to 80, then 120.
+A runs now updated to 200, (equal to B's value).Then C will run twice more, updating its pass to 160 then 200,
+all pass values are equal again, and the process will repeat,
+
+As we can see fromthe table, C ran five times, A twice, and B just once,
+exactly in proportion to their ticket values of 250, 100, and 50,lottery scheduling achieves the proportions probabilistically over time.
+
+So you might be wondering: given the precision of stride scheduling,
+why use lottery scheduling at all? Well, lottery scheduling has one nice property that stride scheduling does not: no global state.
+Imagine a new job enters in the middle of our stride scheduling what should its pass value be?
+Should it be set to 0 ?If so, it will monopolize the CPU.
+With lottery scheduling, there is no global state per process;we simply add a new process with whatever tickets it has,update the
+single global variable to track how many total tickets we have, and go from there.
+lottery makes it much easier to incorporate new processes in a sensible manner.
+
+
+
