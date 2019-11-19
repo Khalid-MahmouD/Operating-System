@@ -1,0 +1,172 @@
+multiprocessor scheduling.
+multiprocessor systems found their way into desktop machines, laptops, mobile devices.
+The rise of the multicore process, in which multiple CPU cores are packed onto a single chip; these chips popular as computer architects.
+making a single cpu much fast without using too much power.
+many difficulties that arise with the arrival of more  than single cpu.
+I) typical application using single CPU(C program); adding more CPUs does not make single application run faster.
+	to remedy you have to rewrite your programe to run in threads(parallel).
+	multiThreads application can spread work accross multiple CUPs and thus run faster given more CPU resources.
+II) how to scheduler jobs on multiple CPUs 
+
+
+10.1 Background: Multiprocessor Architecture
+what is the different between single-CPU hardware and multi-CPU, the difference centers
+around using hardware caches.
+
+in a systen with single CPU, hierarchy of hardware caches that in general help the processor run programs faster.
+caches samall, fast memory that hold copies of populat data that is found in main memory.
+main mermory holds all data, but access is slower, by keeping frequently accessing data in a cache, system seems to make
+large slow memory to be fast one.
+
+example: program load instruction to fetch a value from memory, and a simple system with only a single CPU;
+CPU have samll Cache and larg main memory.
+
+first time this issue load, it fetched from main memory after long time (10s nanoSec), system anticipating that the data may be reused,
+put a copy of the loaded data into CPU Cache.if the program later fetch same data, CPU first check for Cache;
+find it there so it fetched much more quickly.
+
+Caches and locality, there are temporal locality and spatial locality.
+the idea behind temporal locality accessed data, is likely to be accessed again near future.
+for loop i variable in it accessed more and morr.
+
+the idea behind spatial locality accessed data and address X, it is likely to access data item item near to X as well.
+streaming thougth array.
+
+because locality of these types exist in many programs, hardware system can make a good guessess about which data to put in a Cach and thus work well.
+what will happend single system with shared main memory. 
+cpu0 Cach  CPU1 Cach  memory
+
+**Cach Coherence**
+Caching with multiple CPUs is much more complicated.
+two CPUs one access D data value at address A, first it is in main memory he fetches it, then he updata that data to D*.
+get a copy of it in one of CPU's cache.
+
+OS decide to stop program and go to the other CPU, re-reading Valure at address A no such data CPU's cach have, so fetching it form memory,
+and get D value instade of D*(updated one) oOops!!.
+
+the only Solution provided by hardware by monitoring memory accesses,
+bus-snooping 
+each cache pays attention to memory updates by observing the bus that connects them to main memory. 
+sees update holds in its caches, it will notice the change and either ((invalidate)) its copy(remove or update it),Write-back caches,
+
+what if at the same time one read and the other updata?.
+10.2 Don’t Forget Synchronization
+
+When accessing (and in particular, updating) shared data items or structures across CPUs,mutual exclusion primitives (such as locks) should
+likely be used to guarantee correctness.
+shared Queue being accessed on muliple CPUs concurrently.Without locks, adding or removing elements from the queue concurrently 
+will not work as expected,even with the underlying coherence protocols;
+
+example: removing head of the linkedlist. suppose 2 threads running the programe.
+thread 1 excute first line saving head in its ptivate temp in stack, if thread 2 then excute the first line as well;
+it have also its private temp which have head value.
+instade of poping head element from list, each thread try to remove the same element.
+double free of head.
+solution is to use &lock at the beginning and &unlock at the end; this approche makes performance poor.
+accessing shared data become quite slow.
+
+10.3 One Final Issue: Cache Affinity
+a process when runs on a particular CPU, builds up a bit of state in the Caches(and TLB) of the CPU.
+as it run faster if some of its state is already present on the Cache on that CPU.
+instade a process runs on a different CPU each time(take time to reload state each times it runs), preformance will be worse.
+(its okay cache coherence protocols of the hardware).
+multiprocessor scheduler should consider cache affinity when making its
+scheduling decisions, perhaps preferring to keep a process on the same CPU if at all possible.
+
+10.4 Single-Queue Scheduling
+putting all jobs we need to scheduled into a single queue; SingleQueueMultipleScheduler
+advantage of simplicity; it does not require much work to policy that picks the best job to run next and adapt it to work on more than one CPU.
+#scalability, problem, 
+inserting locks to have a proper outcome. lock reduces performance , 
+number of CPUs grows, single lock increase time system spend to wait; less time finish process much time the system spend in lock overhead.
+the system spends more and more time in lock overhead and less time doing the work the systemshould be doing.
+
+#cache Affinity, problem,
+five jobs four CPUs.
+A -> B -> C -> D -> E
+Because each CPU simply picks the next job to run from the globally shared queue,
+each job ends up bouncing around form CPU to CPU, oppiste approch of Cach Affinity.
+cpu0 A E D C B .. (repeat) ...
+cpu1 B A E D C .. (repeat) ...
+cpu2 C B A E D .. (repeat) ...
+cpu3 D C B A E .. (repeat) ...
+
+most SQMS schedulers include some kind of affinitymechanismto try to 
+make it more likely that process will continue to run on the same CPU if possible.
+but move others around to balance load.
+
+cpu0 A E A A A .. (repeat) ...
+cpu1 B B E B B .. (repeat) ...
+cpu2 C C C E C .. (repeat) ...
+cpu3 D D D D E .. (repeat) ...
+A through D are not moving across processors, with only job E migrating(مهاجرة) from CPU to CPU.
+You could then decide to migrate a different job the next time through, thus achieving some kind of affinity fairness as well.
+Thus, we can see the SQMS approach has its strengths and weaknesses.
+
+It is straightforward to implement given an existing single-CPU scheduler, which by definition has only a single queue. However, it does
+not scale well (due to synchronization overheads), and it does not readily preserve cache affinity, sharing information.
+
+10.5 Multi-Queue Scheduling
+multiple queues one per CPU, and we call it multi-queue multiprocessor scheduling (orMQMS).
+
+In MQMS, it consist of MQ, each Q will follow RR discipline, any algrothim can be applyed.
+when jobs enters the systems, it placed on one queue, according to some heuristic(random or pick one with fewer jobs than others);
+Then it is scheduled essentially independently, avoiding problems of information sharing and synchronization present in single queue approach.
+
+Qo-> A -> C Q1 -> B -> D;
+RR 
+CPU0 A A C C A A C C A A C C
+CPU1 B B D D B B D D B B D D
+
+it more scalable, more CPUs more queues, lock and cach contention should not be a centeral problem;
+provides also cach affinity; jobs stays on the same CPU and take advantage of re-using cach content.
+
+#we have new problem: load imbalance ? above suppose C hase finished.
+Qo-> A  Q1 -> B -> D;
+RR 
+CPU0 A A A A A A A A A A A A 
+CPU1 B B D D B B D D B B D D
+A gets twice as much CPU as B and D, which is not pleased outcome.
+
+#another one let'suppose a and C has finished.
+Qo->NULL   Q1 -> B -> D;
+RR 
+CPU0  Idle!!
+CPU1 B B D D B B D D B B D D 
+insert dramatic and sinister music here ظريف فشخ
+
+#HOW TO DEAL WITH LOAD IMBALANCE:
+obvios answer if to move job from one CPU to another, true load balance can be achieved.
+above one OS should simply move B or D to CPU0;
+then splite the load.
+Qo->B   Q1 ->  D;
+but the previos tricky one ?
+Qo-> A   Q1 -> B -> D;
+how we can achieve load balance?
+keep A running alone on CPU0, B and D alternate on CPU1;
+after time slice , B is moved to CPU0 alternate with A, while D is alone on CPU1;
+
+CPU0 A A A A A B A B B B B B 
+CPU1 B D B D D D D D A D A D
+
+Work-Stealing approach-> queue with low on jobs peek at another queue.
+If the target queue is (notably) more full than the source queue, the source will “steal” one or more jobs from the target to help balance load
+
+looking at other queus too often, will suffer from high overhead and have trouble scaling.
+If, on the other hand, you don’t look at other queues very often, you are in danger of suffering from severe load balances.
+
+10.6 Linux Multiprocessor Schedulers
+
+O(1)
+A Priority-based scheduler
+Use Multiple queues
+Change a process’s priority over time (MLFQ);
+Schedule those with highest priority
+Interactivity is a particular focus
+Completely Fair Scheduler (CFS)
+Deterministic proportional-share approach
+Multiple queues
+BF Scheduler (BFS)
+A single queue approach
+Proportional-share
+Based on Earliest Eligible Virtual Deadline First(EEVDF)
