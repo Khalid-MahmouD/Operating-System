@@ -1,0 +1,80 @@
+computer systems was easy.
+Next time you meet one of those computer users, thank them for all the problems they have caused.
+
+13.1 Early Systems
+early machines didn't provide much of an abstraction to users.
+the OS was a library that sat(exsite) in memory(starting at physical address 0 in this example),
+and there would one process that currently sat in physical memory (starting at physical address 64K in this example), used rest of memory,
+and that we called illusions and user didn't expect much from OS, It seems to be seen like each process uses the whole memory.
+
+13.2 Multiprogramming and Time Sharing
+After a time, machines become more effectively. the era of multiprogramming was born,in which multiple processes were ready to run at a given time.
+OS switch between them, when on decided to perform I/O.(increase effective utilization, no waiting time), efficient increase important.
+
+After a time, people demand more of machines, and era of Time sharing was born,
+limitation of long program debug cycles. the notion of interactivity become important, many user using a machine concurrently, each hope
+for respond for their excution tasks. (انا  وانت شاغلين علي سيرفر معين انا بعمل سيف لفايل وفيه واحد تاني بيعمل ديبج لكود فالمفروض ان كل واحد يعمل علي حدي وميستناش التاني يخلص )
+
+How to implement Time-Sharing?
+one way is to run program for a short while giving full access to all memory,
+then stop it save its states to disk, load another process state, run it for a while and so on.
+
+this approach is a big problem: its wat too slow as memory grew. while saving and restoring registers-level-state(pc &registers)
+is relatively fast, saving the entire contents ofmemory to disk is brutally non-performant.(طريقة غير فعالة اني اخزن الحالة بسرعة علي الهارد )
+
+so what we'd rather do is ((leave processes in memory while switching between them, allow OS to implement timeSharing efficiently)),
+
+ | OS(code,data,etc) |  free |  process C | freee  | process B(code, data, etc) | free | process A(code, data, etc) | free | free |
+ 0                  64      128          192                                          320                                        512 KB
+
+three process sharing Memory. (A, B, and C) and each of them have a small part of the 512-KB physical memory, with single CPU,
+OS chooses to run one of the processes (say A), while the others (B and C) sit in the ready queue waiting to run.
+
+
+new demand multiple programs to reside concurrently in memory makes protection an important issue; we don't want a process able to read or write,
+some other process's memory. (اسيب كل البروسيسز شغالة علي الرام بتخلي الكل يشوف التاني بيعمل اية ويقدر يعدل ويكتب عليه )
+
+13.3 The Address Space
+the OS to create an easy to use abstraction of physical memory abstraction the address space,
+and it is the running program’s view of memory in the system.
+
+the address space of a process contains all of memory state of the running process. for example:
+code of the program (instructions) have to live somewhere, and thus they are in address space.
+stack used by program while running, keep tracks function call, allocate local variabes, pass parameters, and return values.
+head used for dynamically-allocated, user-managed memory, malloc() in C, new for C++ or java.
+statically-initialized variables later.
+the code segment: where instructions live and is packed into the first 1K of the address space, Code is static easy to place in memory.
+(it grows upward) the stack segment: contains local variables arguments to routines,  return values, etc.
+the heap segment: contains malloc’d data dynamic data structures (it grows downward)
+
+you could arrange the address space in a different way if you’d like (as we’ll see later, when multiple threads co-exist in an address space, no
+nice way to divide the address space like this works anymore, alas).
+
+this describing is the abstraction that the OS is providing to the running program.
+program actullay loaded in arbitrary physical address(es).
+
+#how OS can build this abstraction of private, potentially large address space for multiple running processes(all sharing memory) on top of a single,
+physical memory?
+
+that what we called Virtualizing memory, because running program thinks it is load into memory at particular address say 0 and has potential very
+large address space say 32-bits; the reality is quite different.
+
+process A tries to perform a load at address 0 (virtual address) where OS with some Hardware support, load doesn't at 0B  but 320KB physical address.
+
+ISOLATION infected process does not affect other process.
+
+#include <stdio.h>
+#include <stdlib.h>
+intmain(intargc, char*argv[]){
+printf("location of code : %p\n", (void*) main);
+printf("location of heap : %p\n", (void*) malloc(1));
+intx = 3;
+printf("location of stack : %p\n", (void*) &x);
+returnx;
+}
+
+location of code : 0x40057d
+location of heap : 0xcf2010
+location of stack : 0x7fff9ca45fcc
+
+
