@@ -1,0 +1,121 @@
+we will discus memory alloction interfaces in UNiX;
+#How to allocate and Manage Memory
+what iterfaces we commnely used ? what mistakes should be avoided?
+
+14.1 Types of Memory
+two types of memory allocated in running C programe:
+1st Stack allocation and dellocation done implicity by the compiler for you as a programmer; automatic memory.
+how to declar such a piece of memory ? 
+void func(){ int x; ....}
+compiler does the rest when you call func(); when you return compiler deallocates the memory for you;
+leave no info in stack; short-lived memory;
+
+we demand long-lived memory that gets us to the second type
+2nd Heap, allocation and deallocation are explicitly handled by you as a programmer.
+Here is an example of how one might allocate a pointer to an integer on the heap:
+
+int*x = (int*)malloc(sizeof(*int)); stack and heap allocation occur on this line:
+room for a pointer to an integer declaration of said pointer int *x;
+calling malloc, request space for an integer on the heap; 
+the routine returns  address such an integer stored in Stack then.
+
+
+14.2 The malloc() Call
+passing it a size asking for a room on the heap, either succeeds and give you back a pointer to
+the newly allocated space, or fial returns NULL.
+
+void*malloc(size_t size);
+single parameter size_t which describes how many bytes you need.
+ 
+sizeof() operator through compile time not running time.
+function call take place at running time.
+
+int *x = malloc(10 * sizeof(int));
+printf("%d\n", sizeof(x));
+
+first line we creat array of 10 integers. sizeof() next line ask simply for 
+how big a pointer to an integer is, not how much memory we have dynamically allocated.
+return small number 8(64-bit_ or 4(32-bit_
+
+int x[10];
+printf("%d\n", sizeof(x));
+
+more static info.  kwoing that 40 byte have been allocated.
+another problem with strings using strlen();
+
+malloc(strlen(s) +1 ) +1 for '\0' end-of-string character.
+malloc() returns void pointer, so programmer use Cast for desire type.
+
+
+14.3 The free() Call
+
+To free heap memory that is no longer in use, programmers simply call free():
+free(x);
+take a returned pointer from malloc(); tracked by memory-allocation library itself. no nedd to pass size of allocated region.
+
+14.4 Common Errors
+many newer languages have support for automatic memory management.
+ou never have to call something to free space; 
+rather,  a garbage collector runs and figures out what memory you no longer have references to and frees it for you.
+
+
+#Forgetting To AllocateMemory 
+char *src = "hello";
+char *dst; // oops! unallocated
+strcpy(dst, src); // segfault and die
+
+char *src = "hello";
+char *dst = (char *) malloc(strlen(src) + 1);
+strcpy(dst, src); // work properly
+segmentation fault 
+
+#Not Allocating EnoughMemory
+char *src = "hello";
+char *dst = (char *) malloc(strlen(src)); // too small!
+strcpy(dst, src); // work properly
+
+allocate 5bytes and forger end-of-string character, in some case it is harmless:
+need to overwrite un-used variable,in other cases is harmfull security vulnerabilities,
+in other cases malloc allocate extra space anyhow, your program run fine, even other cases, the program will indeed fault and crash.
+
+#Forgetting to Initialize AllocatedMemory
+some data of unknown value, used before, random and harmful.
+
+#Forgetting To FreeMemory 
+ memory leak, run out of memory, for OS itself requied restart.
+t using a garbage-collected language doesn’t help here: if you still have a reference to some chunk of memory, will ever free it.
+
+#Freeing Memory Before You Are Done With It
+ dangling pointer, can crash the program, or overwrite valid memory.
+A program accesses to memory with an invalid pointer.
+
+*a -> x -> y;
+   *b -> x; 
+free(b); *a -> free ->XunreachableX y; 
+e.g., you called free(), but then called malloc() again to allocate something else, which then recycles the errantly-freedmemory).
+
+#FreeingMemory Repeatedly
+double free undefine Error, memory allocation library get confused, and do all sorts of weird things, crashes are common outcome.
+
+#Calling free() Incorrectly
+Thus, such invalid frees are dangerous and of course should also be avoided.
+
+14.5 Underlying OS Support
+system calls,
+malloclibrary call use brksystem call.
+brkis called to expand the program’s break.
+break: The location of the end of the heapin address space
+sbrkis an additional call similar with brk.
+Programmers should never directly calleither brkorsbrk.
+mmap() system call can create an anonymous memory region
+
+intbrk(void*addr);
+void*sbrk(intptr_tincrement);
+void*mmap(void*ptr, size_tlength, intport, intflags, intfd, off_toffset);
+
+
+14.6 Other Calls
+calloc() allocates memory and zeroes it befor returning, incase you forgot to initialize it.
+realloc() can also be useful, when want to makes an new larger region of memory, copy old one and return new end.
+
+void*realloc(void*ptr, size_tsize)
