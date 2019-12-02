@@ -1,0 +1,103 @@
+fundamental aspect of any memory managment system.
+malloc library (managing pages of process's heap),
+OS itself (managing address space of process),
+we will discuss the issuse surrounding free-space managment.
+
+dealing with free spaces is more easy with paging concept. 
+space is divided into fixed-sized units;
+keep list of these fixed-sized units; 
+when clinet requests one return first entry.
+
+free-space managment become more difficult, when consisting of variable-sized units;
+this arises in user-level memory-allocation (malloc(), free()).
+OS managing PM using segmentation to implement virtual memory.
+
+external fragmentation: the free space gets chopped into little pieces of different sizes and is thus fragmented;
+request may fail no contiguous space satisfy the request, even total amount of free space exceeds the size of request.
+
+free used free -> total free is 20 bytes; if a request for 15 bytes will fail.
+
+17.1 Assumptions
+I) user-interface that provide -> malloc take one parameter size,(number of bytes); give back a void pointer to that region can be casted.
+	library should track or know how big a chunck memory is when handed just a pointer.
+II)space know as heap to be maganged; managed by data structure cointains reference to all free chunck in the managed region of memory.
+	we concerned abount external fragmentation, allocator hands out chunks of memory bigger than that requested, wast occurs inside allocated unit.
+for simplicity we focus in external fragmentation.
+
+III) once memory handed out to client, it cannot be  relocated to another location in memory,
+	malloc() give a pointer to some space within heap, that memory owned to program cannot moved by library,
+	no compaction of free space is possible,
+IV) alloctor manages a contiguous region of byes. sbrk grow some region.
+	the region is fixed size throughout its life.
+
+--------------------------------------------
+17.2 Low-level Mechanisms
+--------------------------------------------
+we’ll first cover some common mechanisms used in most allocators, splitting and coalescing, common techniques in most any allocator.
+
+--------------------------------------------
+##Splitting and Coalescing
+--------------------------------------------
+
+heap:
+0--free--10--used--20--free--30;
+
+free-list:
+head->({add:0, len:10}) ->({add:20, len:10}) -> NULL 
+
+request greater than 10 bytes will fail as we explain, exactly 10 bytes can fit,
+what if less thant 10 bytes?
+
+
+#Splitting(used in allocators when requests are smaller than the size of any particular free chunk.)
+let's say we call for 1 byte, allocator will perform splitting action.
+find a free chunk of memory that can satisfy the request and split it into two.
+first chunk it will return to caller; second remain on the list.
+for our example,
+malloc() -> caller return 20(address of the 1-byte allocated),and the 
+free list look like this:
+head->({add:0, len:10}) ->({add:21, len:9}) -> NULL
+only the change is starting region at 21 instead of 20, length now 9 instead of 10;
+
+
+#coalescing (With coalescing, an allocator can better ensure that large free extents are available for the application.)
+for our example (free 10 bytes, used 10 bytes, and another free 10 bytes).
+0--free--10--used--20--free--30;
+what happend when applicaiton call free(10), returning the space in the middle?, simply add this free space to the list,
+ends up with list looks like this:
+
+head->({add:0, len:10}) ->({add:10, len:10}) ->({add:20, len:10}) -> NULL;
+
+the problem the whole heap is now empty, when a user request 20 bytes, will not find a fit chunk, and fail.
+
+What allocators do in order to avoid this problemis coalesce free space when a chunk of memory is freed.
+The idea is simple: when returning a free chunk in memory, 
+((look carefully at the addresses of the chunk you are returning)) as well as ((the nearby chunks of free space)); 
+if the newly freed space sits right next to one (or two, as in this example) existing free chunks, 
+merge them into a single larger free chunk. 
+Thus, with coalescing, our final list should look like this:
+
+head->({add:0, len:30}) -> NULL;
+
+--------------------------------------------
+##Tracking The Size Of Allocated Regions
+--------------------------------------------
+
+interface to free(void *prt) does not take size parameter, 
+malloc libray quickly determine the size of region, put it back to free-list.
+to accomplish this task, most allocators store a little bit information in header part before handed-out chunk of memory.
+ptr = malloc(20), head contains size of allocated region and magic number;
+typedef struct __header_t{
+ int size;
+ int magic;//speed up deallocation process, provide additional integrity checking;
+}header_t;
+
+void free(void *ptr) {
+ header_t *hptr = (void *)ptr - sizeof(header_t);
+}
+magic match expected value? assert(hptr->magic == 123456)
+then calculate total size of newly-freed region ((adding the size of the header to size of the region));
+
+Thus, when a user requestsN bytes of memory, the library does not search for a free chunk of size N; rather,
+it searches for a free chunk of size N plus the size of the header.
+

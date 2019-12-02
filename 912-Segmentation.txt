@@ -1,0 +1,47 @@
+
+
+free space between stack and heap.
+pair-per segment (code-stack-heap).
+
+16.5 Fine-grained vs. Coarse-grained Segmentation
+
+coarse-grained, as it chops up the address space into relatively large,coarse chuck.
+fine-grained, earlier system start using it, provides more flexible and allow address space to consist of a large number smaller segments.
+
+-> -> supporting many segments requires even further hardware support <- <-
+
+segment table, stored in memory, support very large number of segments, enable system using it more flexible.
+For example, earlymachines like the Burroughs B5000 had support for thousands of segments, and expected a compiler to chop
+code and data into separate segments which the OS and hardware would then support [RK68].
+
+
+OS could better learn about which segments are in use and which are not and thus utilize main memory more effectively.
+
+
+16.6 OS Support
+
+basic idea as to how segmentation works. 
+Pieces of the address space are relocated into physical memory as the system runs, 
+and thus a huge savings of physical memory is achieved  with just a single base/bounds pair for the entire address space.
+unused need not be allocated allowing us to fit more address spaces into physical memory.
+
+issues arised :
+#The first is an old one: what should the OS do on a context switch?
+@good guess, segment registers must be saved and restored.
+- - - - - - 
+#The second, and main issue is managing free space into physical memory.
+assuming each address space was the same size, physical memory could be though of 
+as bunch of slots where process fit it, we have #segment per process might be in different size.
+general problem physical full of little holes of free space, making it difficult to allocate new segments,or grow existing one.
+external fragmentation (Non-compacted).
+
+we have 24KB free, (in three non-contiguous chunks), OS can't fit 20KB segment request to allocate.
+
+@one solution is to compact physical memory, rearranging the existing segments.
+stop whatever process running, copy thier data to one contiguous region,
+change segment register value to point to new physical memory,
+thus, having a large free extent of memory  with which to work.
+
+#compaction is expensive would use a fair amount of processor time.
+
+simpler approach free-list managment, keeping large extents of memory available for allocation.
