@@ -1,0 +1,209 @@
+segmentation (generalization of dynamic allocation) help us to virtualize memory, but some problems; 
+in particular, managing free space become quite pain as memory becomes fragmented and segmentation is not flexible as we might like.
+
+is there a better solution ?
+how we can avoid segmentation? what basic techniques? how make those techniques work well?
+
+idea of paging: Instead of splitting up our address space into three logical segments(each of variable size, CODE, HEAP, STACK)
+		we split our address space into-sized units we call page.
+|0| page0 |16|  page1  |32|  page2 |48|  page3 |64|-bytes simple 64-byte address space.
+
+physical memory also split into some number of pages as well;we called each page in PM a page frame. 
+from above it placed at PM like this:
+
+0    ________
+    |  OS         | page frame0 of physical memory
+16  ---------------
+    | un-used     | page frame1
+32  ---------------
+    | page3 of AS | page frame2
+48  ---------------
+    | page0 of AS | page frame3
+and so on ...
+
+
+it has a number of advantages over previous approach.
+flexibility: system will able to support the abstraction of an address space effectively, regardless of how the
+	     processes use AS; we won't have to make assumption how heap and stack grow or how they are used.
+simplicity: of free space-managment that paging afford, when OS wishes to place our 64-byte address space into 8-page physical memory,
+		it simply finds free four free pages; OS keep free list of all free pages, and just grabs the first four free pages off of this list.
+VP 0 -> PF 3, VP 1 -> PF 7, VP 2 -> PF 5, VP 3 -> PF 2;
+
+to record where each virtural page of AS is placed in PM, OS pre-process data structure known as page table.
+The major role of page table if is to store address translations , for out example,
+the page table would thus have the following entries:
+
+(VP 0 -> PF 3), (VP 1 -> PF 7), (VP 2 -> PF 5), (VP 3 -> PF 2);
+(most page table structures we discuss are per-process structures; an exception we’ll touch on is the inverted page table).
+
+movl <virtual address>, %eax
+
+to translate this virtural address that the process generated , we have to first split it into two component:
+Virtural Page Number (VPN), and the offset within page.
+64-byte and page have 16 byte-size. (2^6 = 64) we need 6 bit virtual address.
+thus our VA:
+  	---------------------------------------------------------------------
+	|   VA5    |  VA4     |   VA3    |   VA2      |   VA1      |  VA0   |
+        ---------------------------------------------------------------------
+        ^                     ^                                             ^
+	|        VPN          |                  OFFSET                     |
+
+
+we able to select 4 pages, and top 2 bits do just that VPN (0- 01- 10- 11);
+for example:
+movl 21, %eax
+"21" into binary 0 1 0 1 0 1 
+VPN = 01, OFFSET = 0101;
+With our virtual page number, we can now index our page table and find which physical page that virtual page 1 resides.
+In the page table above the physical page number (PPN) (a.k.a. physical frame number or PFN) is 7 (binary 111).
+
+within.
+VPN translated into 7== 111 
+Physical memory address = 1 1 1 0 1 0 1;      
+
+Note the offset stays the same (i.e., it is not translated), because the offset just tells us which byte within the page we want.
+final physical address is 1110101 (117 in decimal), and is exactly where we want our load to fetch data from
+
+18.1 Where Are Page Tables Stored?
+page table cant get awfully large, much bigger than the small segmant table or base/bounds pair.
+32-bit address space with 4-KB pages, splitted into 20-bit VPN and 12-bit offset, 10-bit -> 1024(1-KB), 12-bit = 4096(4-KB).
+
+20-bit VPN, 2^20 translation that the OS would have to manage for each process;
+assume we need 4-bytes per page-table entry (PTE) to hold a physical memory and any other useful stuff,
+we need 4MB of memory needed for each page table! 
+
+imagin 100 processes means: OS need 400MB of memory just for address space translations.
+
+Because page tables are so big,we don’t keep any special on-chip hardware
+in theMMU to store the page table of the currently-running process.
+
+Instead, we store the page table for each process in memory somewhere.
+
+18.2 What’s Actually In The Page Table?	
+data structure that is used to map virtual address (VPN) to physical address (PPN).
+the simplest form is called linear page table, which is just an array.
+OS indexes the array by the VPN, and looks up the page-table entry(PTE) at that index in order to find the desired PFN. 
+
+PTE, have a number of different bits.
+
+A valid bit : is common to indicate whether the particular translation is valid;
+  when a progrme start running, it will have code and heap at one hand and stack at the other.
+  all un-used space in-between will be marked invalid, if process tries to access such memory trap raised, 
+  OS terminate the process.
+  by marking all un-used pages in the address space invalid,
+  we did't need to allocate frame for those pages and save memory,
+
+A protection bits :indicating whether the page could be read from, written to, or executed from.
+  Again, accessing a page in a way not allowed by these bits will generate a trap to the OS.
+
+A present bit : indicates whether this page is in physical memory or on disk (swapped out);
+  address space lager than physical memory, part of address space move to disk and back to support.
+  allow the pages of processes that aren't actively being run to be swapped out.
+
+A dirty bit : indicate whether the page has been modified since it was brought into memory.
+
+A Areference bit (accessed bit) : page has been accessed, and is useful in determining which pages are popular and thus should be kept in memory; 
+such knowledge is critical during page replacement,
+
+A present bit (P); A read/write bit (R/W) which determines if writes are allowed to this page;
+
+A user/supervisor bit (U/S) which determines if user-mode processes can access the page;
+A few bits (PWT, PCD, PAT, and G); that determine how hardware caching works for these pages;
+An accessed bit (A)
+A dirty bit (D); 
+
+and finally, the page frame number (PFN) itself 20bit.
+
+
+18.3 Paging: Also Too Slow
+page table in memory we already know that maight be too big. turns out they can slow down things too.
+instruction like this:
+x86
+movl 21, %eax 
+don't worry about instruction fetch, we will assume hardware performs the translation for us.
+
+to fetch desire data, virtual address (21) must be translated into correct physical address (117).
+before loading to address 117, system must fetch page table entry (PTE) from process's page table, perform translation, هيجيب الفريم نامبر ويلزقوا في جمب الاوفست من الشمال
+and they get the desired data from physical memory.
+
+to do so hardware must know where the page table is for the currently-running process.
+((assume page-table base register))-> contains PA of starting loction of ((page table.))
+
+to find PTE loction, hardware will perform the following functions:
+	VPN     = ( virtualAddress & VPN_MASK)>>SHIFT
+	PTEAddr = PageTableBaseRegister + ( VPN * sizeof(PTE) )
+in our example:
+VPN_MASK set to 0X03 (hex 30, binary 110000), SHIFT set to 4(number of bits in offset),
+	VPN = 21(010101) & 110000 >> 4 = 01, virtual page 1, as desired.
+we use this value (1) as an index into arry of PTEs pointed to by the page-table base register.
+Once this physical address is known, the hardware can fetch the PTE from memory, extract PFN, concatenate with offset from virtual address.
+	offset   = VirtualAddress& OFFSET_MASK
+	physAddr = (PFN << SHIFT) | offset
+21 -> VPN = 1 --translated--> PFN = 7 -> 111<<4 = 1110000|offset = 111offset;
+
+Finally, the hardware can fetch the desired data frommemory and put
+it into register eax. The program has now succeeded at loading a value
+from memory!
+
+
+In general, a page table
+stores virtual-to-physical address translations, thus letting the system
+know where each page of an address space actually resides in physical
+memory. Because each address space requires such translations, in general
+there is one page table per process in the system. The exact structure
+of the page table is either determined by the hardware (older systems) or
+can be more flexibly managed by the OS (modern systems).
+
+
+paging requires us to perform one extra memory reference in order to first fetch the translation from the page table.
+that is a lot of work! Extra memory references are costly, and in this case will likely slow down the process by a factor of two or more.
+
+
+18.4 A Memory Trace
+
+access example to demonstrate all of the resulting memory accesses that occure when using paging.
+C code file:
+int a[1000]
+....
+for(1->1000)a[i]=0;
+
+compile and run this program.
+we will disassemble resulting binary to see what assembly instruction to initialize array with loop.
+
+assembly x86:
+0x1024 movl $0x0,(%edi,%eax,4)
+0x1028 incl %eax
+0x102c cmpl $0x03e8,%eax
+0x1030 jne 0x1024
+
+1st instruction move zero ($0x0) into virtual address memory of the location of the array; calculated by add edi to eax multplied by 4 to it.
+edi hold the base address of memory, eax holds array index(i); muliplied by 4 cause it array of integers, size of 4 bytes.
+
+#note each instruction is 4-byte for simplicity but actually variable-sized.
+
+2nd instruction increments the array index held on eax;
+3rd instruction compare eax by $0x03e8(binary 1000); if is not it excute instruction 4.
+4th instruction go back to the 1st instrution at 0x1024
+
+we assume: 64KB virtual address, page size is 1KB;
+we need to know content of page table, loction at physical memory.
+we assume: linear page table(array) located at physical address 1024.
+
+we care about a few virtual pages, virtual page that code live on.
+1024 resides on page1(second page) mapped to frame say  4;
+VPN 1 -> PFN 4;
+
+array it self and it size if 4000 (1000 integers), and resides on virtual address 40000 through 44000.
+ DEC(40000) BIN(‭1001 1100 0100 0000‬) VPN is 6-bit how ?? 2^6 = 64 we need 6 bits and the page sized one so we have 64 page.
+	last-six bits (100111) is 39 DEC;
+Let’s assume these virtual-tophysical mappings for the example: 
+(VPN 39 ! PFN 7), (VPN 40 ! PFN 8), (VPN 41!PFN 9), (VPN 42!PFN 10).
+
+when it runs, each instruction will generate two memory references: one to the page table to know physical mapped frame that instruction resides,
+							            and one to instruction it self to fetch it to CPU for processing.
+there is one explict memory reference in mov form instruction.
+this adds another page table access first(array VA -translated-> correct physical one) and then the array access itself.
+
+there are 10 memory access per loop, include 4 instruction fetch(they are on the disk initially), one explicit update of memory, five page table accesses to translate,
+	those four instrution fetches and one explicit update.
+
