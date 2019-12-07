@@ -75,12 +75,12 @@ we need 4MB of memory needed for each page table!
 imagin 100 processes means: OS need 400MB of memory just for address space translations.
 
 Because page tables are so big,we don’t keep any special on-chip hardware
-in theMMU to store the page table of the currently-running process.
+in the MMU to store the page table of the currently-running process.
 
 Instead, we store the page table for each process in memory somewhere.
 
 18.2 What’s Actually In The Page Table?	
-data structure that is used to map virtual address (VPN) to physical address (PPN).
+data structure that is used to map virtual address (VPN) to physical address (PhPaNu).
 the simplest form is called linear page table, which is just an array.
 OS indexes the array by the VPN, and looks up the page-table entry(PTE) at that index in order to find the desired PFN. 
 
@@ -128,6 +128,7 @@ and they get the desired data from physical memory.
 
 to do so hardware must know where the page table is for the currently-running process.
 ((assume page-table base register))-> contains PA of starting loction of ((page table.))
+//ptr point to the start location of page table of currnely-running porcess.
 
 to find PTE loction, hardware will perform the following functions:
 	VPN     = ( virtualAddress & VPN_MASK)>>SHIFT
