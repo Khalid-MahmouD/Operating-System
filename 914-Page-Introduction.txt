@@ -128,7 +128,7 @@ and they get the desired data from physical memory.
 
 to do so hardware must know where the page table is for the currently-running process.
 ((assume page-table base register))-> contains PA of starting loction of ((page table.))
-//ptr point to the start location of page table of currnely-running porcess.
+//ptr point to the start location of page table of currnely-running porcess in memory.
 
 to find PTE loction, hardware will perform the following functions:
 	VPN     = ( virtualAddress & VPN_MASK)>>SHIFT
