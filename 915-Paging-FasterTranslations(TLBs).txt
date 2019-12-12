@@ -4,3 +4,20 @@ Going to memory for translation information before every instruction fetch or ex
 
 how we can speed address translation? and avoid extra memory ? what hardware support is required? what OS involvement is needed?
 
+When we want to make things fast, the OS usually needs some help, from the hardware. 
+To speed address translation, we are going to add what is called  (for historical reasons [CP78]) 
+a translation-lookaside buffer, or TLB [C68, C95]. 
+
+A TLB is part of the chip’s memory-management unit (MMU), ((hardware cache of popular virtual-to-physical address translations)); 
+thus, a better name would be an address-translation cache. 
+
+Upon each I)((virtual memory reference)), II) the hardware first checks the TLB to see if the desired
+translation is held therein; if so, III)the translation is performed (quickly)
+without having to IV)consult the page table (which has all translations). 
+
+Because of their tremendous performance impact, TLBs in a real sense make virtual memory possible [C95].
+
+19.1 TLB Basic Algorithm
+
+
+
