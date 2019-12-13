@@ -1,0 +1,25 @@
+second problem paging introduces: page tables are too big and thus consume too much memory.
+
+32-bit addressing space (2^32 bytes), with 4KB pages (2^12 byte) 4byte page-table entry.
+thus address space have over 1 Million virtual pages it it.(2^32/2^12 = 2^20);
+multiplied by size of pages will find 4MB page-table in size, we have one page table for each process in system.
+with hundred active processes, we will allocating hundreds of megabytes of memory just for page tables!!
+
+CRUX: HOW TO MAKE PAGE TABLES SMALLER?
+
+
+20.1 Simple Solution: Bigger Pages
+use bigger pages take out 32-bit address space again, assume 16-KB pages
+We would thus have an 18-bit VPN plus a 14-bit offset.  Assuming the same size for each PTE (4 bytes),
+now have (2^32/2^16)=2^18 entries in our linear page table  and thus a total size of 1MB per page table.
+
+Themajor problemwith this approach known as internal fragmentation:  waste is internal to the unit of allocation.
+I)allocating pages but only using little bits and pieces of each, 
+II)and memory quickly fills up with these overly-large pages.
+
+Our problem will not be solved so simply, alas.
+
+20.2 Hybrid Approach: Paging and Segments
+We call such a combination a hybrid
+Specifically, Dennis had the idea of combining paging and segmentation in order to reduce the memory overhead of page tables.
+

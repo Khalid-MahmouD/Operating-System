@@ -116,7 +116,7 @@ VPN 15 |    |     |    |    |
        ----------------------
 examin simple virtual address trace and see how a TLB can improve performance!!
 assume:
-I)  we have ten 4-bytes integers, starting at virtual address 100.
+I)  we have 10 4-bytes integers, starting at virtual address 100.
 II) Assume further that we have a small 8-bit virtual address space, with 16-byte pages,
     VPN will break down to 4-bit(16-Virtual pages) and 4-bit offset(16 bit on each page)
 
