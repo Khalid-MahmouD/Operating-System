@@ -18,8 +18,159 @@ I)allocating pages but only using little bits and pieces of each,
 II)and memory quickly fills up with these overly-large pages.
 
 Our problem will not be solved so simply, alas.
-
+;--------------------------------------------------------Start:20.2------------------------------------------------------------
 20.2 Hybrid Approach: Paging and Segments
-We call such a combination a hybrid
+why eat just chocolate or plain peanut butter when you can instead combine the two 
+in a lovely hybrid known as the Reese’s Peanut Butter Cup.
+We call such a combination a hybrid,
 Specifically, Dennis had the idea of combining paging and segmentation in order to reduce the memory overhead of page tables.
 
+this might work by examining a typical linear page table in more details.
+we have 16KB address space with 1KB pages.
+
+Assume we have an address space in which the used portions of the heap and stack are small.
+
+(code)VPN0 -> PFN 10,(stack) VPN04-> PFN23,(heap) VPN14, 15-> PFN28, 4..
+most of page-table is un-used, full of invalid entries.
+what a wast in just 16KB!!, imagin 32-bit address space.
+
+our approach: 
+  instead of having a signle page-table for the entire address space of the process, why not have one per logical segment?
+  is this example, we might have three page tables, one code, heap, and stack parts of the address space.
+
+with segmentation, we had:
+   a base register that told us where each segment lived in physical memory, 
+   a bound or limit register that told us the size of segment itself, in our hybrid, we still have those 
+   structures in MMU; but we have base here to hold the physical address of the page table of that
+   segment.
+
+simple example assume 32-bit virtual address space with 4KB pages, and address space split into four segments.
+ in this example we use 3-segments code, headp, and one stack.
+
+to determine which segment an address refers to, we will use top-two bits of address space
+00 un-used 
+01 code
+10 heap
+11 stack
+
+VPN 18-bit
+offset 12-bit
+
+on-running process:
+     the base register for each of these segments contains the physical address of a linear page-table for segment;
+on-contextSwitch
+     these registers must be changed to reflect the location of the page tables of newly running process.
+on-TLB's miss(assuming hardware in charge):
+     using segment bits to determined which base and bound pair use.
+     the hardware take the physical address therein and combines it with the VPN
+;--------------------------Code:-----------------------------------------------------
+     SN  = (VirtualAddress & SEG_MASK) >> SN_SHIFT
+     VPN = (VirtualAddress & VPN_MASK) >> VPN_SHIFT
+     AddressOfPTE = Base[SN] + (VPN * sizeof(PTE))
+;-------------------------------------------------------------------------------
+
+The only difference, of course, is the use of ((one of three segment base registers)) 
+                                instead of the single page table base register.
+
+The critical difference in our hybrid scheme is the presence of a bounds register per segment;
+each bounds register holds the value of the maximum vaild page in the segment.
+
+code have first three pages (0, 1, and 2) bound register will be set to 3, any memory access beyond that end will generate exception,
+and leat to termination of the process.
+
+hybrid approach realizes a significant memory savings compared to the linear page table; unallocated pages between the stack and the heap
+no longer take up space in a page table (just to mark them as not valid).
+
+this approach is not without problems.
+I) we use segmentation and it is not flexible as we would like,
+II) if we have a large but sparsely-used heap, large(have much pages) but used once or a few that is wast!!
+
+I)this hybrid causes external fragmentation to arise again. 
+  While most of memory is managed in page-sized units, page tables now can be of arbitrary size (in multiples of PTEs). .
+  Thus, finding free space for them in memory is more complicated 
+;--------------------------------------------------------End:20.2------------------------------------------------------------
+
+;--------------------------------------------------------Start:20.3------------------------------------------------------------
+20.3 Multi-level Page Tables
+   A different approach doesn't rely on segmentation but attacks the same problem:
+   						how to get rid of invalid regios in page-table instead of keeping them in memory?
+   
+Multi-level page table, turnning  linear page table into something like a tree.
+
+in-details.
+First, chop up the page-table into page-sized units; then if there is an un-used invalid page of page-table Entries(PTEs),
+don't allocate that page of the page-table at all.
+
+To track whether a page of page-table is valid(where is in memory), use a new structre called page-table directory.
+Page-table directory can be used:
+	I) tell you where the page of page-table is.
+	II) the entire page of page-table contains no valid pages.
+
+for linear page table; even though most of middle region are not valid, we still have to allocate those regions.
+
+for multi-level page table. the page directory marks just two pages of the page table as valid; thus those two pages only allocated in memory.
+what multi-level table is doing: it just makes parts of the linear page table disappear (invalid sections), freeimg those frame for other uses, and track which page of the page table are allocated with the page directory.
+
+#The page directory- simple, contains one entry per page of the page-table, consist of page directory entries(PDE), minimally has 
+ a valid bit and page frame number(PFN), similar to PTE.
+
+valid bit here is different, valid PDE at least one of the pages of the page-table that the entry point to(via the PFN) is valid,
+i.e one PTE on that page pointer to by PDE, not valid -> the rest is not define.
+
+#multi-level page tables have advantages,
+ first, only allocates page-table space in proportion to the amount of address space you are using;
+ generally, compact and supports sparse address space.
+
+ second, easy to manage memory; OS can grab the next free page when it needs to allocate or grow a page-table.
+ in linear page-table must reside contigously in physical memory. for large page-table(4MB) find large chunk of un-used
+ contiguous free physical memory can be quite a challenge.
+
+ with multi level structure, we add level of indirection through use of page diresctory (random access).
+ allowing place page-table pages wherever we would like in PM.
+
+#costing in MLT, when TLB's miss two loads from memory will be required to get the righ translation,
+ one for  PDT and one from PTE 
+ 
+ but in TLB's hit performance is obviously indetical, miss suffer from a higher cost with this small table.
+
+;--------------------------------------------Start:Example---------------------------------------------------------------------
+A DetailedMulti-Level Example.  
+16KB address space size, 
+64 byte of pages. 
+then we have 14 bit address space, with 8-bit VPN and 6-bit for offset.
+linear page table will have 2^8 Entries, even if small portion in used.
+
+virtual page (0,1) for code, virtual page (4,5) for heap, virtual page (254,255) for the stack;
+the rest is not used.
+
+to build a two-level page table for this address space,
+start with, break linear page-table up into page-sized units.
+
+our page table size is 1KB(256 entries * 4-byte PTE size), given we have 64 byte of pages.
+1KB can be divided into 16 64-byte pages each page can hold 16 PTEs.   
+
+what we need to understand now how to take VPN and use it to index first to PD then into PT.
+let's first index into PD. 256 entries spread across 16 pages. 
+PD needs one entry per page of the page-table; thus it has 16 entiens.
+
+we need 4-bits of VPN to index into PD; we use top 4-bits of VPN, extract page-directory index;(PDIndex)
+we can use it to find (PDE) 
+PDEAddr = PageDirBase + (sizeof(PDE)*PDIndex);
+
+in PDEAddr maked valid? we extract ((PFN)) form PD to index Page-table, to extract the sutable PTE we need the other 4-bits of VPN.
+PTEAddr = (PDE.PFN << SHIFT) + (PTIndex * sizeof(PTE));
+
+then extract frame NUmber  and concatenate with Offset
+
+11 1111 1000 0000
+
+1111 top 4-bits VPN to index into PD. 15the last entry of PD valid page located at 101.
+1110 second 4-bits VPN to index into Page of page-table and find desire PTE.
+1110 is the next-to-last (14th) entry on the page, and tells us that page 254 of our virtual address space is mapped at physical page 55.
+
+ PFN = 55 
+physical address = (PTE.PFN<<SHIFT)+offset
+= 00 1101 1100 0000 
+;--------------------------------------------End:Example---------------------------------------------------------------------
+
+More Than Two Levels

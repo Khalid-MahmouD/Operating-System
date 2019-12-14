@@ -37,7 +37,7 @@ if (Success == True) // TLB Hit
 
 //----Page-table-entry-address----
 else // TLB Miss
- PTEAddr = PTBR + (VPN * sizeof(PTE))          //base-register pointer 
+ PTEAddr = PTBR + (VPN * sizeof(PTE))          //page-tabel-base-register pointer 
  PTE = AccessMemory(PTEAddr)        
  if (PTE.Valid == False)                       //
  RaiseException(SEGMENTATION_FAULT)
