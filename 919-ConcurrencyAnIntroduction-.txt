@@ -1,5 +1,5 @@
 ;----------------------------------------------------Strt:Intro----------------------------------------------------------------------------
-we have seen how to takw a single physical CPU and turn it into multiple Virtual CPUs, thus enabling the illusion of multiple 
+we have seen how to takw a single physical CPU and turn it into multiple Virtual CPUs, thus enabling the illusion of multiple
 programs running at the same time.
 
 how to creat the illusion of a large, private virtual memory for each process; this abstraction of address space enables each programe
@@ -18,15 +18,15 @@ it has program counter (PC) traks where the program is fetching instruction from
 each thread has its own private set of registers it uses for computation;
 
 contextSwitch, for two treads running on a single process t1,t2; register state of t1 must be saved and the register state of t2 restored
-befor running t2. 
-we saved state to Program Control Block(PCB); 
+befor running t2.
+we saved state to Program Control Block(PCB);
 and one or more Thread Control Blocks(TCB) to store each state of threads.
 one difference, comparing thread as process: the address space remains the same(no need to switch page table we are using).
 one other major difference between threads and processess concerns of stack.
 classic process(single threaded process), there is a single stack, usually resides at the bottom of the address space.
 muti-threaded process, each thread runs independently call into various routines to do whatever work it is doing.
 
-instead of single stack in the address space, there will be one per thread. 
+instead of single stack in the address space, there will be one per thread.
 let's say we have a multi-threaded process that have two threads in it; the resulting address space looks different.
  two stacks spread through address space of the process, thus, any Stack-allocated variables, parameters, return values, other things
  put in stack will be placed in what is sometimes called thread-local storage the stack of the relevant thread.
@@ -40,7 +40,7 @@ we want creat program that creat two theads, each doing independent work, in out
 
 main program creats two threads, each run function mythread(), with different argument.
 once created it may be start running(depend on Scheduler); it may be put in ready but not running state and thus not run yet.
-after creating two threads, 
+after creating two threads,
 the main thread calls pthread_join(), which waits for a particular thread to complete.
 
-let's examin possible 
+let's examin possible
