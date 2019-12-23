@@ -1,0 +1,57 @@
+in virtual memory manager, life is eay when you have a lot of free memory.
+A page-fault occurs, you find free page of free-page list and assign it ot the faulting page.
+
+intersiting once there is a little memory free. 
+memory pressure: forces the OS to start paging out pages to make room for actively-used pages.
+Deciding which page to evict is encapsulated within the replacement policy of the OS.
+
+#HOW TO DECIDE WHICH PAGE TO EVICT
+
+
+22.1 Cache Management
+
+Given that main memory holds some subset of all the pages in the system,
+it can rightly be viewed as a cache for virtual memory pages in the system.
+
+our goal is picking a replacemnt for this cach to minimize number of cache misses;
+minimize the number of times that we have to go to disk to fetch descriped page.
+maximize the number of times a page that is read or written is found in memory.
+
+knowing number of caches misses and hits, Calculate average memory Access time(AMAT).
+
+	AMAT = TM + ( PMiss . TD);
+TM cost of accessing memory, 
+TD cost of accessing Desk.
+Pmiss miss rate percentage.
+
+we have 10 pages except page 3 on memory.
+4KB address space(12 bit) 256 pages (8offset), 4VPN
+2^4 = 16 can hand 16 pages.
+hit hit hit miss hit hit hit hit hit;
+90%hit rate, TM = 100ns.
+10%miss rate, TD = 10ms.
+AMAT = 1ms
+
+99%hit, TM =100ns;
+10%miss, TD = 10ms;
+AMAT = 10Micro
+
+100 times faster.
+
+22.2 The Optimal Replacement Policy
+leads to fewest number of misses overall.
+think abot this if we throw out why not throw out the one that is needed the furthest from now?
+you saying all other pages in cach is more important than the one furthest out.
+
+Assume a program accesses the following stream
+of virtual pages: 0, 1, 2, 0, 1, 3, 0, 3, 1, 2, 1.
+cold-start miss (or compulsory miss). first three pages Miss.
+0,1 hit, come 3.
+memory is full?
+which page should we replace?
+With the optimal policy, we examine the future for each page
+currently in the cache (0, 1, and 2),
+0 immediately accessed, 1 a little bit later, 2 furthest in the futere, 
+so we replace with 2.
+
+
