@@ -27,7 +27,7 @@ An attribute is initialized with a separate call to pthread_attr_init();
 in most cases, the defaults will be fine; in this case, we will simply pass the value NULL in.
 
 third argument is the most complex, asking: which function should this thread start running in?
-called 🔥️function pointer in C: function name with a single argument of type void,which returns a value of type void * (i.e., a void pointer).
+called 🔥️function pointer in C: function name with a single argument of type void, which returns a value of type void * (i.e., a void pointer).
 
 integer argument, instead of a void pointer
 void * (*start_routine)(int), and returning value of void*.
@@ -37,7 +37,7 @@ int (*start_routine)(void*), and returning value of void*.
 
 
 why do we need these void pointers?
-allows us to pass any  type of argumen, as a return value allowing thread to return any type of result.
+allows us to pass any  type of argument, as a return value allowing thread to return any type of result.
 
 the thread, once created, can simply cast its argument to type it expects.
 Once you creat a thread, you really have another live excuting entity, complete with its own call stack, running within the
@@ -52,13 +52,13 @@ int pthread_join(pthread_t thread, void **value_ptr);
 
 this routine takes only two arguments!!
 1️⃣️the first is of type pthread_t, and is used to specify which thread to wait for.
-   the same value passed into the creation;used for the thread to stop running.
+   the same value passed into the creation; used for the thread to stop running.
 
 2️⃣️the second is a pointer to the return value you expect to get back.
   the routine can return anything, it is defined to return a pointer to void;
 
 because the pthread join() routine changes the value of the passed in argument, you need to pass in a pointer to the value,
-not the value it self.
+not passing the value it self.
 -------------------------------------------------
 🔷️.......To return values, the myret_t type is used.  
 class myarg_t{
@@ -69,6 +69,14 @@ class myret_t{
  int a;
  int b;
 };
+void *mythread(void *arg) {
+  myarg_t *m = (myarg_t *) arg;
+  printf("%d %d\n", m->a, m->b);
+  myret_t *r = Malloc(sizeof(myret_t));
+  r->x = 1;
+  r->y = 2;
+ return (void *) r;
+}
 int
 main(int argc, char *argv[]) { 
  int rc;
@@ -167,7 +175,7 @@ this code is broken, in two important ways.
    they have the correct values to begin with and thus work as desired when lock and unlock are called.
 
    there are two ways to initialize locks.
-   ✅️ use PTHREAD MUTEX INITIALIZER, as follows:
+   ✅️ use PTHREAD_MUTEX_INITIALIZER, as follows:
         pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
       sets the lock to the default values and thus makes the lock usable.
    ✅️ The dynamic way to do it (i.e., at run time) is to make a call to pthread mutex init(), as follows:
@@ -211,5 +219,66 @@ Two primary routines are:
 int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex);
 int pthread_cond_signal(pthread_cond_t *cond);
 
+To use a condition variable, one has to in addition have a lock that is associated with this condition.
+When calling either of the above routines, this lock should be held.
+
+pthread cond wait(), put calling thread sleep, wait for other thread to signal it, if any changing now-sleeping thread
+might care about. 
+بكل بساطة لو في ثيرد عاوزة تاخد جزء من الكود وفيه ثرد قبلها معاها قفل فالاول هتنام لحد ما التانية اللي معاها القفل تنبهها وتقولها انا خلصت امسك يا ابو الصحاب القفل انت.
+
+//pthread cond init() (and corresponding the pthread_cond_destroy() call) instead tatic initializer PTHREAD_COND_INITIALIZER.
+//initializing lock
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t init = PTHREAD_COND_INITIALIZER;
+
+Pthread_mutex_lock(&lock);
+	while (initialized == 0) // it is not finished yet.
+	 Pthread_cond_wait(&init, &lock);// but the calling thread to wait(sleep), untill initialized !=0, beside release the lock.
+Pthread_mutex_unlock(&lock);
+
+after initialization of the relevant lock and condition,
+thread checks to see if the variable initialized has yet been set to something other than zero.
+If not, the thread simply calls the wait routine in order to sleep until some other thread wakes it.
+
+The code to wake a thread, which would run in some other thread,
+looks like this:
+ 
+ Pthread_mutex_lock(&lock);
+ initialized = 1;
+ Pthread_cond_signal(&init);
+ Pthread_mutex_unlock(&lock);
+
+a few things to note about this code:
+1️⃣️lfirst, at signaling (modifying the global variable initialized), make sure lock held, This ensures that we don’t have a race condition into our code.
+
+2️⃣️ seconde, wait call takes a lock as its second parameter, whereas signal call takes a condition only,
+	the wait call, putting calling thread to sleep, release the lock when putting caller to sleep. 
+	imagine if it did not: how could the other thread acquiring the lock and signal it to wake up ?
+	befor returning after being woken, pthread cond wait() re-acquires the lock
+	thus ensuring that any time the waiting thread is running between the lock acquire at the beginning
+        of the wait sequence, and the lock release at the end, it holds the lock.
+2️⃣️ One last oddity: the waiting thread re-checks the condition in a while loop, instead of a simple if statement.
+	using a while loop is the simple and safe thing to do. Although it rechecks the condition (perhaps adding a little overhead), 
+
+some implementation spuriously wake up waiting thread, without rechecking, the waiting thread will continue thinking that the condition has changed even though it has not. It is safer thus to view waking up as a hint that something might have changed, rather than an absolute fact.
 
 
+it is tempting to use a simple flag to signal between two threads, instead of a condition variable and associated lock.
+
+while (initialized == 0)
+; // spin
+
+The associated signaling code would look like this:
+initialized = 1;
+
+not recomended it performs poorly in many cases(spining for long time just wastes CPU cycles).
+it is error prone
+
+it is surprisingly easy to make mistakes when using flags (as above) to synchronize between
+threads; roughly half the uses of these ad hoc synchronizationswere buggy!
+
+
+;------------------------------------------------------------------Strt:27.4-------------------------------------------------------------------
+27.5 Compiling and Running
+
+prompt> gcc -o main main.c -Wall -pthread
