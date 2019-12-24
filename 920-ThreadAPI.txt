@@ -1,0 +1,205 @@
+/*
+ 
+
+
+*/
+how to creat and control threads
+what interfaces should the OS present for the thread creation and control?
+how they should be designed to enable ease of use as well as utility?
+
+;------------------------------------------------------------------Strt:27.1-------------------------------------------------------------------
+27.1 Thread Creation
+first thing to write a multi-threaded  program is to create a new  threads,
+
+#include<pthread.h>
+//prototype 
+int
+pthread_creat(pthread_t* thread, const pthread_arr_t *attr, void* (*start_routine)(*void), void* args);
+
+there are four arguments: thread, attr, start_routine, and args.
+
+first, thread, is a pointer to structure of type pthread_t; use this structure to interact with this thread,
+we pass to the pthread_creat() to initialize it.
+
+second, arrgument attr, is used to spicify any attributes this thread might have.
+may be, stack size, or info about scheduling priority of the thread.
+An attribute is initialized with a separate call to pthread_attr_init();
+in most cases, the defaults will be fine; in this case, we will simply pass the value NULL in.
+
+third argument is the most complex, asking: which function should this thread start running in?
+called 🔥️function pointer in C: function name with a single argument of type void,which returns a value of type void * (i.e., a void pointer).
+
+integer argument, instead of a void pointer
+void * (*start_routine)(int), and returning value of void*.
+
+returning value is integer but argument still took a void pointer.
+int (*start_routine)(void*), and returning value of void*.
+
+
+why do we need these void pointers?
+allows us to pass any  type of argumen, as a return value allowing thread to return any type of result.
+
+the thread, once created, can simply cast its argument to type it expects.
+Once you creat a thread, you really have another live excuting entity, complete with its own call stack, running within the
+same address space as all the currently existing threads in the program.
+
+;------------------------------------------------------------------Strt:27.2-------------------------------------------------------------------
+27.2 Thread Completion 
+  what happens if you want to ((wait for a thread to complete))?
+  in particular, you must call the routine pthread_join().
+ 
+int pthread_join(pthread_t thread, void **value_ptr);
+
+this routine takes only two arguments!!
+1️⃣️the first is of type pthread_t, and is used to specify which thread to wait for.
+   the same value passed into the creation;used for the thread to stop running.
+
+2️⃣️the second is a pointer to the return value you expect to get back.
+  the routine can return anything, it is defined to return a pointer to void;
+
+because the pthread join() routine changes the value of the passed in argument, you need to pass in a pointer to the value,
+not the value it self.
+-------------------------------------------------
+🔷️.......To return values, the myret_t type is used.  
+class myarg_t{
+ int a;
+ int b;
+};
+class myret_t{
+ int a;
+ int b;
+};
+int
+main(int argc, char *argv[]) { 
+ int rc;
+ pthread_t p;
+ 
+ myret_t *m;
+ myarg_t args;
+ 
+ args.a = 10;
+ args.b = 20;
+ 
+ Pthread_create(&p, NULL, mythread, &args);
+ //we pass a pointer to hold the returned value.
+ Pthread_join(p, (void **) &m);
+ printf("returned %d %d\n", m->x, m->y);
+ 
+ return 0;
+
+---------------------------------------------------
+🔷️we don't have to do all of painfull packing and unpacking of arguments.
+creat thread with no argument just pass NULL, we can pass NULL into pthread_join() if we don't care about return value.
+pass a single value (e.g int), we don't need to unpack or pack thins
+
+void *mythread(void *arg) {
+int m = (int) arg;
+printf("%d\n", m);
+return (void *) (arg + 1);
+}
+
+pthread_t p;
+int rc, m;
+Pthread_create(&p, NULL, mythread, (void *) 100);
+Pthread_join(p, (void **) &m);
+printf("returned %d\n", m);
+-------------------------------------------------------
+🔷️we don't have to be carful with how values are returned from thread.
+never return a pointer refers to something allocated on the thread's call stack.
+will return something deallocated after thread finished.
+variable r is allocated on the stack of mythread.
+when it returns, variable value automatically deallocated.
+passing back a pointer to a now deallocated variable to a bad results.
+
+in this example:
+void *mythread(void *arg) {
+ myarg_t *m = (myarg_t *) arg;
+ printf("%d %d\n", m->a, m->b);
+ myret_t r; // ALLOCATED ON STACK: BAD!
+ r.x = 1;
+ r.y = 2;
+return (void *) &r;
+}
+
+
+to create thread we  use pthread_create() followed by Pthread_join().
+there is an easier way to accomplish this exact task; it's called a ↗️(procedure call).
+
+⏩️Clearly, we’ll usually be creating more than just one thread and waiting for it to complete, other-
+wise there is not much purpose to using threads at all. 
+
+👀️not all code that is multi-threaded uses the join routine.
+for-example: multi-theaded web server might create a number of worker theads, using main thread to accept requests
+and pass them to the workers, long-lived programs thus may not need to join.
+
+However, a parallel program that creates threads to execute a particular task (in parallel) will likely use .._join() to make sure
+all such work completes before exiting or moving onto the next stage of computation.
+
+
+;------------------------------------------------------------------Strt:27.3-------------------------------------------------------------------
+27.3 Locks 🔐️🔥️
+byond threa creation and join, the most useful set of functions provided by POSIX library 🔥️are those
+for providing mutual exclusion to a critical section via locks.
+
+basic pair of routines to use for this purpose is provided by this pair:
+int pthread_mutex_lock(pthread_mutex_t *mutex);
+int pthread_mutex_unlock(pthread_mutex_t *mutex);
+
+
+When you have a region of code you realize is a ⚠️<critical section>, need to be protected by locks in order to operate as desired.
+
+pthread_mutex_t lock;
+pthread_mutex_lock(&lock);
+x = x + 1; // or whatever your critical section is
+pthread_mutex_unlock(&lock);
+
+intent of the code: 
+🔎️if no other threads holds the lock when pthread_mutex_lock() is called, 
+   the thread will acquire the lock and enter the critical section.
+
+🔎️if another thread does indeed hold the lock, the thread trying to grab the lock will not returning
+  from the call until acquring the lock( implies -> thread which holding the locks released it via the unlock call).
+
+many thread stuck wating there inside lock acquisition 
+
+this code is broken, in two important ways.
+1️⃣️lack of proper initialization, all locks must be properly initialized in order to  guarantee that(حتي نضمن) 
+   they have the correct values to begin with and thus work as desired when lock and unlock are called.
+
+   there are two ways to initialize locks.
+   ✅️ use PTHREAD MUTEX INITIALIZER, as follows:
+        pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+      sets the lock to the default values and thus makes the lock usable.
+   ✅️ The dynamic way to do it (i.e., at run time) is to make a call to pthread mutex init(), as follows:
+ 	int rc = pthread_mutex_init(&lock, NULL);
+        assert(rc == 0); // always check success!
+      first argument is the lock itself, second optional.
+  we usually use the dynamic (latter) method.
+  pthread_cond_destroy()
+  should also be made, when you are done with the lock;
+
+2️⃣️ fails to check errors code when calling lock and unlock.
+  If your code doesn’t properly check error codes, the failure will happen silently, which
+  in this case could allow multiple threads into a critical section.
+  
+  ✅️use wrappers,which assert that the routine succeeded
+	//Use this to keep your code clean but check for failure
+	//Only use if exiting program is OK upon failure
+	void Pthread_mutex_lock(pthread_mutex_t *mutex) {
+	int rc = pthread_mutex_lock(mutex);
+	assert(rc == 0);
+	}
+    ☣️more sophisticated (non-toy) programs, which can’t simply exit when something goes wrong, 
+      should check for failure and do something appropriate when the lock or unlock does not succeed.
+
+The lock and unlock routines are not the only routines that pthreads has to interact with locks.
+there are two more routines which may be interest:
+
+int pthread_mutex_trylock(pthread_mutex_t *mutex);
+int pthread_mutex_timedlock(pthread_mutex_t *mutex, struct timespec *abs_timeout);
+
+1️⃣️first returns failure if the lock is already hedl; اول واحد هيفشل لو فيه فعلا ثرد ماسكة الحتة بتاعة الكود
+2️⃣️second returns after timeout or after acquiring the lock; التاني هيرجع لو التايم اوت خلص اللي انا بدهولوه عشان ميستناش كتير او يرجع بعد ما ياخد اللوك ليه
+  whichever happens first.
+
+
