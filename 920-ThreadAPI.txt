@@ -198,8 +198,18 @@ there are two more routines which may be interest:
 int pthread_mutex_trylock(pthread_mutex_t *mutex);
 int pthread_mutex_timedlock(pthread_mutex_t *mutex, struct timespec *abs_timeout);
 
-1️⃣️first returns failure if the lock is already hedl; اول واحد هيفشل لو فيه فعلا ثرد ماسكة الحتة بتاعة الكود
+1️⃣️first returns failure if the lock is already held; اول واحد هيفشل لو فيه فعلا ثرد ماسكة الحتة بتاعة الكود
 2️⃣️second returns after timeout or after acquiring the lock; التاني هيرجع لو التايم اوت خلص اللي انا بدهولوه عشان ميستناش كتير او يرجع بعد ما ياخد اللوك ليه
   whichever happens first.
+
+;------------------------------------------------------------------Strt:27.4-------------------------------------------------------------------
+27.4 Condition Variables
+major component of any threads library, is the presence of a condition variable.
+useful when some kind of signaling must take place between threads, if one thread is waiting for another to do something before it can continu.
+
+Two primary routines are:
+int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex);
+int pthread_cond_signal(pthread_cond_t *cond);
+
 
 
