@@ -48,5 +48,226 @@ Thus locks help transform the chaos that is traditional OS scheduling into a mor
 
 28.2 Pthread Locks
 
+the name POSIX library uses for lock is a mutux, used to provide mutual exclusion between threads,
+i.e., any thread in critical section, it exclude the others from entering until it has completed the section.
+(we use our wrappers  that check for errors upon lock and unlock):
+
+  pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+  Pthread_mutex_lock(&lock); // wrapper for pthread_mutex_lock()
+  balance = balance + 1;
+  Pthread_mutex_unlock(&lock);
+
+we can use different locks to protect different variables, increaing concurrency:
+1️⃣ instead of one big lock that is used any time any  critical section is accessed
+(a coarse-grained locking strategy),the whole package is 🔒 .
+
+2️⃣ one will often protect different data and data structures with different locks, thus allowing more threads to be in locked code at once
+(a more fine-grained approach).
 
 
+28.3 Building A Lock
+by now you know how lock works, but how should we build a lock?
+what hardware support is needed? what OS support? how we cam build efficient lock? provide mutex at low cost?
+
+a number of different hardware primitives have been added to the instruction sets of various computer architectures;
+we don't study how implement, but we study how to use them in order to build a mutual exclusion primitive like lock.
+we need to study how OS gets involved to complete the picture and enable us to build a sophisticated locking library.
+
+
+28.4 Evaluating Locks
+befor building any locks, we should first understand what  our goals are, and ask how to evaluate the efficacy of particular 
+lock implementation.
+
+wheather the lock deos the basic task, 
+which is provide ((mutual exclusion)), does the lock work ((preventing multiple threads from entering a critical section ))?
+
+fairness,does each thread contending for the lock get a fair shot at acquiring it once it is free?
+	does any thread contending for the lock starve while doing so, thus never obtaining it?
+
+performance, time overheads added by using lock.
+no contention; single thead is running grabs and releases the lock, what overhead of doing so?
+multiple threads are contending for the lock on a single CPU;
+muliple CPUs involved, and threads on each contending for the lock? 
+we can better understand the performance impact of using various locking techniques, as described below.
+
+
+28.5 Controlling Interrupts
+
+solution earliest solutions used to provide mutual exclusion was disable interrupts for critical sections; 
+for single-processor systems.
+code:
+void lock() {
+   DisableInterrupts();
+}
+void unlock() {
+   EnableInterrupts();
+}
+
+by turning off interrupts (using some kind of special hardware instruction) before entering a critical section, 
+we ensure that code inside critical section will not be interrupted, and will excuted as if it were atomic.(grab lock)
+when we finished, we re-enable interrupts (again via a hardware instruction), and thus the program proceeds as usual.(release lock)
+
+positive of this approach is its simplicity.
+with no interrupts, a thead ensure that the code it excuted will excute and no other thread will interface with it.
+
+The negatives, unfortunately, are many
+1. requires us to allow any calling thread to perform a privileged operation (turning interrupts on and off) and thus trust that  this    facility is not abused.
+ . any time we are required to trust an arbitrary program, we are probably in trouble,
+   gready program could call lock() at the beginning of its excution, thus monopolize the processor;
+   worse, errant or malicious program could call lock() and go into endless loop.
+ . OS never gain control again, restart system as solution.
+   Using interrupt disabling, requires toomuch trust in applications.
+
+2. the approach does not work on multiprocessors.
+   If multiple threads are running on different CPUs, and each try to enter the same critical section, 
+   it does not matter whether interrupts are disabled; threads will be able to run on other processors, and thus
+   could enter critical section.
+
+3. this aproach can be inefficient.
+   masks or unmasks interrupts tends to be excuted slowly by modern CPUs.
+
+for these reasons, turning off interrupts is only used in limited context as mutual exclusion primitive.
+for example, OS use interrupt masking to guarantee atomicity when accessing its own data structures, 
+or prevent certain messy interrupt handling situation from arising.
+OS trust it self to perform privilaged operations anyhow. 
+
+ASIDE: DEKKER’S AND PETERSON’S ALGORITHMS
+Unlike the solutions we discuss here, which use special hardware instructions and even OS support	
+Dekker’s approach uses just loads and stores (assuming they are atomic with respect to each other, which was true on early hardware).
+
+just loads and stores are used, and the idea is to ensure that two threads never enter a critical section at the same time.
+int flag[2];
+int turn;
+void init() {
+	flag[0] = flag[1] = 0; // 1->thread wants to grab lock
+	turn = 0; // whose turn? (thread 0 or 1?)
+}
+void lock() {
+	flag[self] = 1; // self: thread ID of caller
+	turn = 1 - self; // make it other thread’s turn
+	while ((flag[1 - self] == 1) && (turn == 1 - self))
+		; // spin-wait
+}
+void unlock() {
+	flag[self] = 0; // simply undo your intent
+}
+
+
+28.6 Test And Set (Atomic Exchange)
+disabling interrupts does not work with multiple processors, start to invent hardware support for locking.
+		typedef struct __lock_t { int flag; } lock_t;
+
+		void init(lock_t * mutex) {
+		 	// 0 -> lock is available, 1 -> held
+	 		mutex->flag = 0;
+	
+		}
+
+		 void lock(lock_t* mutex) {
+	 		while (mutex->flag == 1) // TEST the flag
+		 		; // spin-wait (do nothing)
+	 		mutex->flag = 1; // now SET it!
+
+		 }
+
+ 		void unlock(lock_t* mutex) {
+			 mutex->flag = 0
+ 		}
+;---------------------------------------------------------------First Attempt: A Simple Flag
+
+the simplest bit of hardware support to understand is what is known as a test-and-set instruction, atomic exchange.
+we use simple flag variable to donate whether the lock is held or not.
+
+in first attempt, idea quite simple: use a simple variable to indicate whether some thread has possession of a lock().
+
+senario 1:
+the first thread enters the critical section will call lock(), which tests whether the flag is equal to 1 ?(it is not, in this case),
+and sets the flag to 1 to indicate that the thread now holds the lock.
+
+finished with critical section the thread calls unlock() and clears the flag, that indicating tha lock no longer held.
+
+senario 2:
+another thread 	happens to call lock(), while that first thread in critical section, it simply spin-wait in while loop until the thread
+call unlock() and clear the flag. once the first thread done so, waiting one will set the flag after get out of while loop,
+and proceed into critical section.
+
+
+two problems
+1- correctness
+2- performance
+1️⃣  correctness problem is simple to see once you get used to thinking about concurrent programming (assuming flag = 0 to begin)
+
+		thread 1				thread2
+		---------------------------------------------------
+		call lock()
+		while(flag == 1)
+		interrupt: switch to thread 2
+							call lock()
+							while(flag == 1)
+							flag = 1; //take it for it self!!
+							interrupt: switch to thread 1
+		flag = 1 //take it too!
+;--------------------------------------Table 28.1: Trace: No Mutual Exclusion
+
+
+where both threads set their flags to 1 and both threads are thus able to enter the critical section. This is bad! We
+have obviously failed to provide the most basic requirement: providing mutual exclusion.
+
+2️⃣ the performance problem, thread waits to acquire a lock that is already held: checking the value of flag, technique known as spin-   	waiting. and that  technique wastes timewaiting for another thread to release a lock.
+
+3️⃣ on uniporcessor, the wast is high, where the thread that the waiter is waiting for can not even run, so moving forward and develop more 
+sophisticated solution,we should also consider ways to avoid this kind of waste.
+
+
+28.7 Building A Working Spin Lock
+it is not possible to implement without some support from the hardware.
+some systems provide an instruction to support the creation of simple locks based on this concept.
+more powerful instruction  it is the load/store unsigned byte instruction (ldstub), whereas on x86,
+
+xchg instruction but basically does the same thing across platforms, referred to as test-and-set.
+
+int TestAndSet(int* ptr, int new) {
+	 int old = *ptr; // fetch old value at ptr
+	 * ptr = new; // store ’new’ into ptr
+	 return old; // return the old value
+	
+}
+return old valure pointed by ptr, and update said value to new. the sequance of operation is performed atomically.
+call test-and-set enables  you to test the old value, and setting the memory location to new value.
+
+more powerful instruction is enough to build a simple spin lock, as we now examine in Figure 28.2
+
+typedef struct __lock_t {
+	 int flag;
+	
+} lock_t;
+
+void init(lock_t * lock) {
+	 // 0 indicates that lock is available, 1 that it is held
+		 lock->flag = 0;
+		
+}
+
+void lock(lock_t * lock) {
+	while (TestAndSet(&lock->flag, 1) == 1)
+		;// spin-wait (do nothing)
+	
+}
+
+ void unlock(lock_t * lock) {
+	 lock->flag = 0;
+}
+;----------------------------------------------------Figure 28.2: A Simple Spin Lock Using Test-and-set
+Let’s make sure we understand why this works
+1st case:
+1. the case where a thread calls lock() and no other thread currently holds the lock; flag should be 0.
+   when thread calls TestAndSet(flag, 1), the routine return old flag which is 0; calling thread that (testing) the flag value,
+   will not get caught spinning in the while loop and will acquire the lock.
+   thread atomically set the value to 1, indicating that the lock is now held.
+   finishing with critical section call unlock() to clear the flag = 0;
+
+2nd case:
+2. the lock held(i.e., flag is 1). thread in this case, this thread will call TestAndSet(flag, 1)as well.
+   and returning the old value with is 1 (cause the lock is held). while simultaneously setting it to 1 again. 
+   As long as the lock is held by another thread, TestAndSet() will repeatedly return 1, and thus this
+   threadwill spin and spin until the lock is finally released. When the flag is finally set to 0 by some other thread, this thread will       call TestAndSet() again, which will now return 0 while atomically setting the value to 1 and thus acquire the lock and enter the    critical section.
