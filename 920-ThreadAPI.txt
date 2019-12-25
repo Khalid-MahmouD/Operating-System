@@ -257,7 +257,7 @@ a few things to note about this code:
 	befor returning after being woken, pthread cond wait() re-acquires the lock
 	thus ensuring that any time the waiting thread is running between the lock acquire at the beginning
         of the wait sequence, and the lock release at the end, it holds the lock.
-2️⃣️ One last oddity: the waiting thread re-checks the condition in a while loop, instead of a simple if statement.
+ One last oddity: the waiting thread re-checks the condition in a while loop, instead of a simple if statement.
 	using a while loop is the simple and safe thing to do. Although it rechecks the condition (perhaps adding a little overhead), 
 
 some implementation spuriously wake up waiting thread, without rechecking, the waiting thread will continue thinking that the condition has changed even though it has not. It is safer thus to view waking up as a hint that something might have changed, rather than an absolute fact.
@@ -282,3 +282,30 @@ threads; roughly half the uses of these ad hoc synchronizationswere buggy!
 27.5 Compiling and Running
 
 prompt> gcc -o main main.c -Wall -pthread
+
+			ASIDE: THREAD API GUIDELINES
+	There are a number of small but important things to remember when
+	you use the POSIX thread library (or really, any thread library) to build a
+	multi-threaded program. They are:
+• Keep it simple. Above all else, any code to lock or signal between threads should be as simple as possible. Tricky thread interactions lead to bugs.
+
+• Minimize thread interactions. Try to keep the number of ways in which threads interact to a minimum. Each interaction should
+be carefully thought out and constructed with tried and true approaches (many of which we will learn about in the coming chapters).
+
+• Initialize locks and condition variables. Failure to do so will lead to code that sometimes works and sometimes fails in very strange ways.
+
+• Check your return codes. Of course, in any C and UNIX programming you do, you should be checking each and every return code, and it’s true here as well. 
+Failure to do so will lead to bizarre and hard to understand behavior, making you likely to (a) scream, (b) pull some of your hair out, or (c) both.
+
+• Be careful with how you pass arguments to, and return values from, threads. 
+In particular, any time you are passing a reference to a variable allocated on the stack, you are probably doing something wrong.
+
+• Each thread has its own stack. As related to the point above, please remember that each thread has its own stack. 
+Thus, if you have a locally-allocated variable inside of some function a thread is executing, it is essentially private to that thread; 
+no other thread can (easily) access it. To share data between threads, the values must be in the heap or otherwise some locale that is globally accessible.
+
+• Always use condition variables to signal between threads. While it is often tempting to use a simple flag, don’t do it.
+
+• Use the manual pages. On Linux, in particular, the pthread man pages are highly informative and discuss much of the nuances presented
+here, often in even more detail. Read them carefully!
+

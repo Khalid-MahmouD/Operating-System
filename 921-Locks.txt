@@ -1,0 +1,52 @@
+presence of interrupts on a single process(or multiple thread excuting on multiple processors concurently).
+locks, programmers annote 🍔 source code with locks, putting them around critical sections, 
+thus ensure that any such critical section excutes as if it were a single atomic instruction.
+
+
+28.1 Locks: The Basic Idea
+
+updata of a shared variable:
+balance = balance + 1;
+
+Of course, other critical sections are possible, such as adding an element to a linked list or other more complex updates to shared structures,
+
+To use a lock, we add some code around the critical section like this:
+lock_t mutex; // some globally-allocated lock ’mutex’
+...
+lock(&mutex);
+balance = balance + 1;
+unlock(&mutex);
+
+a lock is just a variable, and to use one, you must declare a lock variable(e.g..mutex above).
+lock holds tha state of the lock at any instant in time, 1️⃣ available,(unlocked or free) no thread holds the lock,
+or 2️⃣ acquired (locked or held), and thus exactly one thread hold the lock and is in a critical section.
+
+we could store other info. in data type as well, 
+1️⃣  which thread hold the lock, a queue for ordering lock acquisition, 
+2️⃣  all is hidden from the user of the lock.
+
+The semantics of the lock() and unlock() routines are simple.
+calling lock() routine tries to acquire the lock; if no other thread hold the lock(i.e it is free), thread will acquire the lock,
+entring the critical section; thread this called the owner of the lock.
+
+if another thread then call lock() with same variable mutex, it will not return while the lock is held by another thread;
+⭕in this way, other threads are prevented from entering the critical section while the first thread that holds the lock is in there. 
+
+once the owner calls unlock() the lock is available again.
+1️⃣ no other thread waiting for the lock, state of the lock simply changed to free.(no thread has called lock() an stuck waiting).
+2️⃣ if there are waiting threads (stuck in lock()), one of them will (eventually)  notice (or be informed of) this change of lock's state,       acqurire the lock, enter critical section.
+
+
+Locks provide some minimal amount of control over scheduling to programmers.
+threads created by programmer but scheduled by the OS, in any fashion OS choose.
+Locks yield some of that control back to the programmer;
+the programmer can guarantee that no more than a single thread can ever be active within that code.
+Thus locks help transform the chaos that is traditional OS scheduling into a more controlled activity.
+الثردز البروجرامر هو اللي بيعملها بس بيتم ترتبها حسب نظام التشغيل
+الاقفال بتضيق فيتشيرز ان البروجرامر هو اللي هيعملها وينظمها كمان بحيث مفيش غير ثريد واحدة هي اللي تشتغل
+وبدل الفوضي بتاع الاسكيدوالر بتاع النظام هيبقي اكتر تحكم بواسطة البروجرامر
+
+28.2 Pthread Locks
+
+
+
