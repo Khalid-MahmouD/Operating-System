@@ -1,5 +1,5 @@
 ;----------------------------------------------------Strt:Intro----------------------------------------------------------------------------
-we have seen how to takw a single physical CPU and turn it into multiple Virtual CPUs, thus enabling the illusion of multiple
+we have seen how to takw a single physical CPU and turn it into multiple Virtual CPUs, thus enabling the illusion of multiple 
 programs running at the same time.
 
 how to creat the illusion of a large, private virtual memory for each process; this abstraction of address space enables each programe
@@ -18,15 +18,15 @@ it has program counter (PC) traks where the program is fetching instruction from
 each thread has its own private set of registers it uses for computation;
 
 contextSwitch, for two treads running on a single process t1,t2; register state of t1 must be saved and the register state of t2 restored
-befor running t2.
-we saved state to Program Control Block(PCB);
+befor running t2. 
+we saved state to Program Control Block(PCB); 
 and one or more Thread Control Blocks(TCB) to store each state of threads.
 one difference, comparing thread as process: the address space remains the same(no need to switch page table we are using).
 one other major difference between threads and processess concerns of stack.
 classic process(single threaded process), there is a single stack, usually resides at the bottom of the address space.
 muti-threaded process, each thread runs independently call into various routines to do whatever work it is doing.
 
-instead of single stack in the address space, there will be one per thread.
+instead of single stack in the address space, there will be one per thread. 
 let's say we have a multi-threaded process that have two threads in it; the resulting address space looks different.
  two stacks spread through address space of the process, thus, any Stack-allocated variables, parameters, return values, other things
  put in stack will be placed in what is sometimes called thread-local storage the stack of the relevant thread.
@@ -40,7 +40,315 @@ we want creat program that creat two theads, each doing independent work, in out
 
 main program creats two threads, each run function mythread(), with different argument.
 once created it may be start running(depend on Scheduler); it may be put in ready but not running state and thus not run yet.
-after creating two threads,
+after creating two threads, 
 the main thread calls pthread_join(), which waits for a particular thread to complete.
+/*
+// CODE:
+#include <stdio.h>
+#include <assert.h>
+#include <pthread.h>
 
-let's examin possible
+void* mythread(void* arg) {
+	 printf("%s\n", (char*)arg);
+	 return NULL;
+	
+}
+
+ int
+ main(int argc, char* argv[]) {
+	 pthread_t p1, p2;
+	 br int rc;
+	 printf("main: begin\n");
+	 rc = pthread_create(&p1, NULL, mythread, "A"); assert(rc == 0);
+	 rc = pthread_create(&p2, NULL, mythread, "B"); assert(rc == 0);
+	 // join waits for the threads to finish
+		 rc = pthread_join(p1, NULL); assert(rc == 0);
+	 rc = pthread_join(p2, NULL); assert(rc == 0);
+	 printf("main: end\n");
+	 return 0;
+	
+}  
+*/
+
+let's examin possible excution ordering of little programe.
+
+the normal excution order, In the execution diagram (Table 26.1), time increases in the downwards
+direction, and each column shows when a different thread (the main one,
+or Thread 1, or Thread 2) is running.
+
+  				main			thead1		thead2
+				---------------------------------------------------
+				starts running
+				prints "main: begin"
+				creates thread1
+				creates thread2
+				wait for t1
+							runs
+							Prints"A"
+							returns
+				wait for t2
+									runs
+									prints"B"
+									returns
+				prints “main: end”
+
+					Table 26.1: Thread Trace (1)	
+
+that is not the only possible ordering, there might depending on Scheduler(which thread decides to run at given point).
+for example, once it thread is created it run immediatly, which lead to excution like shown in the table 26.2: thread trace (2)
+
+
+  				main			thead1		thead2
+				---------------------------------------------------
+				starts running
+				prints "main: begin"
+				creates thread1
+				
+							runs
+							Prints"A"
+							returns
+				creats thread2
+									runs
+									prints"B"
+									returns
+				waits for t1
+				     returns immediatly; t1 is done.
+				waits for t2
+				     returns immediatly; t2 is doen.
+				prints “main: end”
+
+					Table 26.2: Thread Trace (2)	
+
+we couled even see "B" printed before "A" if say Scheduler decided to run thread2 first even though thread1 was created earlier;
+no reason assume is created one will run first.
+final excution ordering.
+
+  				main			thead1		thead2
+				---------------------------------------------------
+				starts running
+				prints "main: begin"
+				creates thread1
+				creates thread2
+									runs
+									prints"B"
+									returns
+				waits for t1
+							runs
+							prints"B"
+							returns
+				wairs for t2
+				    returns immediatly; T2 is done.
+				prints “main: end”
+
+					Table 26.3: Thread Trace (3)
+
+creat thread might looks like call function, function excute function and returning to the caller; system instead
+creats new thread of excution for the routin that is being called, and runs independently of the caller, 
+perhaps before returning fromthe create, but perhaps much later.
+
+
+;----------------------------------------------------End:26.1-----------------------------------------------------------------------------
+/*
+//CODE:
+#include <stdio.h>
+#include <pthread.h>
+#include "mythreads.h"
+
+static volatile int counter = 0;
+
+//
+// mythread()
+//
+// Simply adds 1 to counter repeatedly, in a loop
+// No, this is not how you would add 10,000,000 to
+// a counter, but it shows the problem nicely.
+//
+void*
+mythread(void* arg)
+{
+	printf("%s: begin\n", (char*)arg);
+	int i;
+	for (i = 0; i < 1e7; i++) {
+		counter = counter + 1;
+	}
+	printf("%s: done\n", (char*)arg);
+	return NULL;
+}
+
+//
+// main()
+//
+// Just launches two threads (pthread_create)
+// and then waits for them (pthread_join) 
+//
+int
+main(int argc, char* argv[])
+{
+	pthread_t p1, p2;
+	printf("main: begin (counter = %d)\n", counter);
+	Pthread_create(&p1, NULL, mythread, "A");
+	Pthread_create(&p2, NULL, mythread, "B");
+
+	// join waits for the threads to finish
+	Pthread_join(p1, NULL);
+	Pthread_join(p2, NULL);
+	printf("main: done with both (counter = %d)\n", counter);
+	return 0;
+}
+
+	Figure 26.3: Sharing Data: Oh Oh (t2)
+*/
+;----------------------------------------------------Strt:26.2-----------------------------------------------------------------------------
+26.2 Why It GetsWorse: Shared Data
+
+above how created and run in different orders depinding on how the scheduler decide to run them.
+now how theads interact when they access shared data.
+
+two threads update a global shated data(variable).
+few notes over the code of figure 26.3.
+
+wrap thread creation and join routines to simply exit on failure;
+Thus, Pthread create() simply calls pthread_create() and makes sure the return code is 0; 
+if it isn’t, Pthread_create() just prints a message and exits.
+
+instead of using two separate function bodies for the worker threads, we use a single piece of code, pass argument (a string),
+print different letter before message.
+
+the work tyr or add 1 to globe shared variable count, 10 million times(1E7) in a loop, desired final result is: 20,000,000.
+we compile and run the program, to see how it behaves. 
+
+prompt> gcc -o main main.c -Wall -pthread
+prompt> ./main
+main: begin (counter = 0)
+A: begin
+B: begin
+A: done
+B: done
+main: done with both (counter = 20000000)
+
+but acculy 
+main: done with both (counter = 19345221)
+
+Let’s try it one more time,
+main: done with both (counter = 19221041)
+
+not only is each run wrong, but also yields a different result! 
+why does this happen?
+
+
+#new tools
+Here, we use a neat tool called a disassembler. 
+When you run a disassembler on an executable, it shows you what assembly instructions make up the program.
+
+prompt> objdump -d main
+
+Doing so produces a long listing of all the instructions in the program,
+neatly labeled (particularly if you compiled with the -g flag),
+
+debugger like gdb
+memory profilers like valgrind or purify,	
+;----------------------------------------------------End:26.2------------------------------------------------------------------------------
+  ;x86 assembly
+  mov 0x8049a1c, %eax
+  add $0x1, %eax
+  mov %eax, 0x8049a1c
+;----------------------------------------------------Strt:26.3-----------------------------------------------------------------------------
+26.3 The Heart of the Problem: Uncontrolled Scheduling
+
+variable counter located at address 0x8049a1c.
+move that address to variable eax to be used, add 1 to that variable, finaly push the modified result back.
+
+
+Let us imagin one of our two threads (thread 1) enters this  region of code,
+it loads the value of counter into register eax, (let's begin with 50) eax = 50;
+then it adds one to the register; thus eax = 51.
+
+timer interrupt goes off; thus, the OS saves the state of current running thread(its PC, its registers including eax etc) to the TCB.
+thread 2 chosen to run, it entres this same piece of code.
+also excute the first instrcution, getting the value of counter and putting it into its eax.
+
+Note: each thread have it own private registers; (the registers is virtualized by the context-switch code that saves and restores them) .
+
+the value of counter is still 50, thread 2 has eax = 50. thread 2 excute the next two instructions, incrementing eax by 1(thus eax = 51),
+saving the contents of eax into counter (address 0x8049a1c).
+global counter now has value 51.
+
+another context-switch occures, thread 1 resumes running.
+just excute mov and add , and it's about to excute final mov instruction, update the counter variable(eax = 51);
+so the final instruction excutes and save value to memory; counter = 51 agin!!.
+
+the code to increment counter has been run twice, but is still equal 51, correct version resulting in  counter equal 52.
+
+Assume, for this depiction, that the above code is loaded at address 100 inmemory,
+
+------------------------------------------------------------------------------------------------------------------------------------------
+OS		Thread 1 		Thread 2 		PC 	%eax 	counter
+-------------------------------------------------------------------------------------------------------------------------------------------
+                before critical section 			100 	0 	50
+		mov 0x8049a1c, %eax 				105 	50 	50    mov instruction take 5-bytes.
+		add $0x1, %eax 					108 	51 	50    add instruction take only 3-bytes.
+interrupt
+save T1’s state
+restore T2’s state 						100 	0 	50
+					mov 0x8049a1c, %eax 	105 	50 	50
+					add $0x1, %eax 		108 	51 	50
+					mov %eax, 0x8049a1c 	113 	51 	51
+interrupt
+save T2’s state
+restore T1’s state 						108 	51 	50
+		mov %eax, 0x8049a1c 				113 	51 	51
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------
+
+A critical section is a piece of code that accesses a shared resource,
+usually a variable or data structure.
+
+A race condition arises if multiple threads of execution enter the
+critical section at roughly the same time; both attempt to update
+the shared data structure, leading to a surprising (and perhaps undesirable)
+outcome.
+
+An indeterminate programconsists of one ormore race conditions;
+the output of the program varies from run to run, depending on
+which threads ran when. The outcome is thus not deterministic,
+something we usually expect from computer systems.
+
+To avoid these problems, threads should use some kind of (mutual
+exclusion primitives); doing so guarantees that only a single thread
+ever enters a critical section, thus avoiding races, and resulting in
+deterministic program outputs.
+
+;----------------------------------------------------End:26.3-----------------------------------------------------------------------------
+
+;----------------------------------------------------Strt:26.4-----------------------------------------------------------------------------
+26.4 TheWish For Atomicity
+have more powerful instructions that, in a single step,  did exactly whatever we needed done and thus removed the possibility of an untimely interrupt.
+
+memory-add 0x8049a1c, $0x1s we don't have instruct like this.
+
+Thus, what we will instead do is ask the hardware for a few useful
+instructions upon which we can build a general set of what we call synchronization
+primitives. By using these hardware synchronization primitives,
+in combination with some help fromthe operating system, we will
+be able to build multi-threaded code that accesses critical sections in a
+synchronized and controlled manner, and thus reliably produces the correct
+result despite the challenging nature of concurrent execution.
+
+;----------------------------------------------------End:26.4-----------------------------------------------------------------------------
+
+;----------------------------------------------------Strt:26.5-----------------------------------------------------------------------------
+26.5 One More Problem: Waiting For Another
+
+that of accessing shared variables and the need to support atomicity for critical sections. As it turns out,
+there is another common interaction that arises, where one thread must wait for another to complete some action before it continues. 
+This interaction arises, 
+
+for example, when a process performs a disk I/O and is put to sleep; when the I/O completes, 
+the process needs to be roused fromits slumber so it can continue.
+
+Thus, in the coming chapters, we’ll be not only studying how to build
+support for synchronization primitives to support atomicity but also for
+mechanisms to support this type of sleeping/waking interaction that is
+common in multi-threaded programs. 
+;----------------------------------------------------End:26.5-----------------------------------------------------------------------------
