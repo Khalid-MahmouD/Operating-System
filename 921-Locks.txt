@@ -226,17 +226,18 @@ more powerful instruction  it is the load/store unsigned byte instruction (ldstu
 
 xchg instruction but basically does the same thing across platforms, referred to as test-and-set.
 
+
+return old valure pointed by ptr, and update said value to new. the sequance of operation is performed atomically.
+call test-and-set enables  you to test the old value, and setting the memory location to new value.
+
+more powerful instruction is enough to build a simple spin lock, as we now examine in Figure 28.2
+
 int TestAndSet(int* ptr, int new) {
 	 int old = *ptr; // fetch old value at ptr
 	 * ptr = new; // store ’new’ into ptr
 	 return old; // return the old value
 	
 }
-return old valure pointed by ptr, and update said value to new. the sequance of operation is performed atomically.
-call test-and-set enables  you to test the old value, and setting the memory location to new value.
-
-more powerful instruction is enough to build a simple spin lock, as we now examine in Figure 28.2
-
 typedef struct __lock_t {
 	 int flag;
 	
@@ -270,4 +271,141 @@ Let’s make sure we understand why this works
 2. the lock held(i.e., flag is 1). thread in this case, this thread will call TestAndSet(flag, 1)as well.
    and returning the old value with is 1 (cause the lock is held). while simultaneously setting it to 1 again. 
    As long as the lock is held by another thread, TestAndSet() will repeatedly return 1, and thus this
-   threadwill spin and spin until the lock is finally released. When the flag is finally set to 0 by some other thread, this thread will       call TestAndSet() again, which will now return 0 while atomically setting the value to 1 and thus acquire the lock and enter the    critical section.
+   thread will spin and spin until the lock is finally released. When the flag is finally set to 0 by some other thread, this thread will      call TestAndSet() again, which will now return 0 while atomically setting the value to 1 and thus acquire the lock and enter the       critical section.
+
+By making both the test (of the old lock value) and set (of the new value) a single atomic operation, we ensure that only one thread acquires the lock. how to build a working mutual exclusion primitive!
+
+this type of locks usually referred to as a spin lock. simplest type of lock to build, and
+simply spins, using CPU cycles, until the lock becomes available.
+To work correctly on a single processor, it requires a preemptive scheduler (i.e., one that will interrupt a thread via a timer, in order to run a different thread, from time to time).
+
+Without preemption, spin locks don’t make much sense on a single CPU, as a thread spinning on a CPU will never relinquish it.
+
+
+28.8 Evaluating Spin Locks
+
+given basic spin lock, we can now evaluate how effective it is along our previously described axes.
+
+the most important aspect of a lock is correctness: does it provide mutual exclusion ? the answe here is yes:
+the spin lock only one thread allowed to enter the critical section at a time.
+
+the next axis is fairness. How fair is a spin lock to a waiting thread? 
+can we make sure that the waiting thread will ever enter the critical section?
+bad news : spin locks don't provide any fairness guarantees. thread spinningmay spin forever, under contention. ممكن تفضل تلف وهي لسه بتتشك علي الفلاج وتطالب بدخولها
+Spin locks are not fair and may lead to starvation.
+
+The final axis is performance. What are the costs of using a spin lock?
+To analyze this more carefully, we suggest thinking about a few different cases.
+
+threads competing for the lock on a signle processor;
+threads spread out across many processors.
+
+in single CPU case, performance overhead can be quite painful;
+imagin a thread pre-empted within a critical section and held the lock.
+the scheduler run every other thread, each of which try to acquire the lock. 
+in this case, each will spin for the duration of a time slice before giving up the cpu, a wast of CPU cycles. 
+
+
+multiple CPUs, spin locks work reasonably well (if the number of threads roughly equals the number of CPUs).
+thread A on CPU 1 and thread B on CPU 2, both conteding for a lock. if A grabs the lock, if B tries to, it will spin on CPU 2.
+it probably critical section is short, soon lock become available, and acquired by B.
+spinning to wait for a lock held on another processor dosn't waste many cycles in this case, and thus can be quite effective.
+
+28.9 Compare-And-Swap
+
+Another hardware primitive that some systems provide is known as the compare-and-swap instruction or compare-and-exchange.
+The basic idea is for compare-and-swap to test whether the value at the  address specified by ptr is equal to expected; 
+if so, update the memory location pointed to by ptr with the new value. If not, do nothing.
+
+in either case, return the actual value at that memory location, 
+thus allowing the code calling compare-and-swap to know whether it succeeded or not.
+
+we can build a lock in a manner quite similar to that with test-and-set.
+
+int CompareAndSwap(int* ptr, int expected, int new) {
+	int actual = *ptr;
+	if (actual == expected)
+		*ptr = new;
+	return actual;
+}
+void lock(lock_t* lock) {
+	while (CompareAndSwap(&lock->flag, 0, 1) == 1)
+		;// spin
+}
+
+This code works quite similarly it simply checks if the flag is 0 and if so, atomically swaps in a 1 thus acquiring the lock.
+Threads that try to acquire the lock while it is held will get stuck spinning until the lock is finally released.
+
+Finally, as you may have sensed, compare-and-swap is a more powerful instruction than test-and-set.
+
+why? test-and-set modifies the contents of a memory location and returns its old value as a single atomic operation.
+
+compare-and-swap atomically compares the contents of a memory location to a given value and, only if they are the same, modifies the contents of that memory location to a given new value.
+
+28.10 Load-Linked and Store-Conditional
+some platforms provide a pair of instruction that work concert to help build critical section.
+for example, the load-linked and store-conditional instructions can be used in tandem واحد واحد to build locks and other concurrent structures.
+
+int LoadLinked(int* ptr) {
+	 return *ptr;
+	
+}
+int StoreConditional(int* ptr, int value) {
+	if (no one has updated * ptr since the LoadLinked to this address) {
+		*ptr = value;
+		return 1; // success!
+
+	}
+	else {
+		return 0; // failed to update
+
+	}
+
+}
+/*LESS CODE IS BETTER CODE*/
+// short-circuiting boolean conditionals.
+//void lock(lock_t* lock) {
+//	 while (LoadLinked(&lock->flag) || !StoreConditional(&lock->flag, 1))
+//		; // spin
+//}
+void lock(lock_t* lock) {
+	while (1) {
+		while (LoadLinked(&lock->flag) == 1)
+			; // spin until it’s zero
+		if (StoreConditional(&lock->flag, 1) == 1)
+			return; // if set-it-to-1 was a success: all done
+		// otherwise: try it all over again
+
+	}
+
+}
+
+ void unlock(lock_t * lock) {
+	 lock->flag = 0;
+	
+}
+;---------------------------Using LL/SC To Build A Lock
+;-------------------------------------------------------Figure 28.4: Load-linked And Store-conditional-----------------
+
+load-linked operator much like load instruction, simply fetches a value from memory and place it in a register.
+key difference come with store-conditional, which only succeeds if no intermittent store to the address has taken place.
+in the case of success, store-conditional returns 1 and update value of ptr to value;
+in the case of fails, the value ptr in not updated and 0 is returned.
+
+howto build a lock using load-linked and store-conditional.above after modifying,
+lock() part, thread spinning waiting to the flag get 0,(the lock in not held).
+thus trying acquiring the lock via the store-conditional; if it succeeds, flag set to 1 and thus can proceed into critical section.
+
+Note how failure of the store-conditional might arise!!.
+thread call lock() excute load-linked, returning 0 as the lock is not held.
+before it can attempt the store-conditional, 
+          interrupted and another thread enters the lock code, executing the load-linked instruction, returning also 0 and continuing,
+#two threads have each executed the load-linked and each are about to attempt the store-conditional.
+
+🔥The key feature of these instructions is that only one of these threads will succeed in updating the flag to 1 and thus acquire the lock;
+
+the second thread to attempt the store-conditional will fail (because the other thread updated the value of flag between its load-linked and storeconditional) and thus have to try to acquire the lock again.
+
+
+
+28.11 Fetch-And-Add
