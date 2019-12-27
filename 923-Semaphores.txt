@@ -1,0 +1,169 @@
+one needs both locks and condition variable to solve concurrency problems.
+Edsger Dijkstra "Shortest paths" "Goto Statements Considered Harmful"
+the intro of a synchronization primitive called the semaphore,
+one can use semaphores as both locks and condition variables.
+
+# HOW TO USE SEMAPHORES?
+how can we use semaphores instread of locks and condition variables?
+what definision of semaphore?  What is a binary semaphore?
+Is it straightforward to build a semaphore out of locks and condition variables? 
+What about building locks and condition variables out of semaphores?
+
+31.1  Semaphores: A Definition
+A semaphore is as an object with an integer value that we can manipulate with two routines; 
+in the POSIX standard, hese routines are sem_wait() and sem_post().
+initial value of the semaphore determines its behavior,(initializing required), 
+before interact with semaphore with any routines.
+ 
+#include <semaphore.h>
+sem_t s;
+sem_init(&s, 0, 1);
+;--------------------------Initializing A Semaphore
+
+we declare a semaphore s and initialize it to the value 1 by passing 1 in as third argument.
+
+The second argument to sem init() will be set to 0 in all of the examples we’ll see; 
+this indicates that the semaphore is shared between threads in the same process.
+
+After a semaphore is initialized, we can call one of two functions to
+interact with it, sem wait() or sem post()
+
+int sem_wait(sem_t *s) {
+    decrement the value of semaphore s by one
+    wait if value of semaphore s is negative
+}
+
+int sem_post(sem_t *s) {
+    increment the value of semaphore s by one 
+    if there are one or more threads waiting, wake one
+}
+;-------------------------------------------------------------Semaphore: Definitions of Wait and Post
+
+We will now focus on how to use these primitives; later we may discuss how they are built;
+we discuss a few few salient aspects of the interfaces here.
+sem_wait() will either return right away, (because the value of the semaphore was one or higher when we called sem_wait())
+ or it will case the caller to suspend execution waiting for a subsequent post.
+decrement the value of semaphore.
+multiple calling threads may call into sem wait(), and thus all be queued waiting to be woken.
+
+sem_post() does not wait for some particular condition to hold,
+increments the value of the semaphore and then, 
+if there is a thread waiting to be woken,  wake one of them up.
+
+Third, the value of the semaphore, when negative, is equal to the number of waiting threads.
+Don’t worry (yet) about the seeming race conditions possible within the semaphore; 
+assume that the actions they make are performed atomically.
+
+
+31.2 Binary Semaphores (Locks)🔐️
+
+sem_t m;
+sem_init(&m, 0, X); // initialize semaphore to X; what should X be?
+sem_wait(&m);
+// critical section here
+sem_post(&m);
+;-----------------------------------------------------------------------A Binary Semaphore, a.k.a. a Lock
+
+using semaphore as a lock. sem_wait()/sem_post pair.
+critical to make this work, initial value of the semaphore m (initialized to X in the figure). What should X be?
+we can see that the initial value should be 1. 
+1️⃣️
+let’s imagine a scenario with two threads.
+The first thread (Thread 0) calls sem_wait(); decrement the value of semaphore, changed to 0.
+thread wait if value < 0 it is equal 0, so it will simply return and continue;
+
+thread 0 now free to enter the critical section. 
+If no other thread tries to acquire the lock while Thread 0 is inside the critical section, when it calls sem post(), 
+it will simply restore the value of the semaphore to 1 (and not wake any waiting thread,  because there are none).
+Table 31.1 shows a trace of this scenario.
+2️⃣️
+A more interesting case arises when Thread 0 “holds the lock” (i.e., it has called sem wait() but not yet called sem post()), 
+and another thread (Thread 1) tries to enter the critical section by calling sem wait().
+
+In this case, Thread 1 will decrement the value of the semaphore to -1, and thus wait 
+(putting itself to sleep and relinquishing the processor). 
+
+When Thread 0 runs again, it will eventually call sem post(), 
+incrementing the value of the semaphore back to zero, and then wake the waiting thread (Thread 1), 
+
+which will then be able to acquire the lock for itself. 
+When Thread 1 finishes, it will again increment the value of the semaphore, restoring it to 1 again.
+table 31.2 shows a trace of this example
+
+Note in particular that Thread 1 goes into the sleeping state when it tries to acquire the already-held lock;
+only when Thread 0 runs again can Thread 1 be awoken and potentially run again.
+
+Because locks only have two states (held and not held),
+this usage is sometimes known as a binary semaphore and in fact can be implemented in a more simplified manner than discussed here; 
+we instead use the generalized semaphore as a lock.
+
+
+31.3 Semaphores As Condition Variables✅️✖️
+
+Semaphores are also useful when a thread wants to halt its progress waiting for a condition to become true.
+For example, a thread may wish to wait for a list to become non-empty, so it can delete an element from it.
+
+In this pattern of usage, we often find a thread waiting for something to happen, 
+and a different thread making that something happen and then signaling that it has happened,  
+thus waking the waiting thread. 
+
+Because the waiting thread (or threads) is waiting for some condition in the program to change, 
+we are using the semaphore as a condition variable.
+
+sem_t s;
+
+void *
+child(void *arg) {
+     printf("child\n");
+     sem_post(&s); // signal here: child is done
+     return NULL;
+}
+
+int
+main(int argc, char *argv[]) {
+    sem_init(&s, 0, X); // what should X be?
+    printf("parent: begin\n");
+    pthread_t c;
+    Pthread_create(c, NULL, child, NULL);
+    sem_wait(&s); // wait here for child
+    printf("parent: end\n");
+    return 0;
+}
+;---------------------------------------------------A Parent Waiting For Its Child
+imagine a thread creates another thread and then wats to wait for it to complete its execution,
+When this program runs, we would like to see the following:
+parent: begin
+child
+parent: end
+
+As you can see in the code, the parent simply calls sem_wait() and the child sem_post()
+to wait for the condition of the child finishing its execution to become true.
+
+However, this raises the question: what should the initial value of this semaphore be?
+the value of the semaphore should be set to is 0.
+
+There are two cases to consider.
+1️⃣️First, let us assume that the parent creates the child but the child has not run yet 
+    (i.e., it is sitting in a ready queue but not running). 
+
+  In this case (Table 31.3), the parent will call sem_wait() before the child has called sem post(); 
+  we’d like the parent to wait for the child to run.
+  The only way this will happen is if the value of the semaphore is not greater than 0; hence, 0 is the initial value. value < 0 ?
+
+The parent runs, decrements the semaphore (to -1), then waits (sleeping).
+When the child finally runs, it will call sem post(), increment the value of the semaphore to 0, 
+and wake the parent, which will then return from sem wait() and finish the program.
+
+2️⃣️the child runs to completion before the parent gets a chance to call sem_wait().
+   in this case, the child will first call sem_post(), thus incrementing the value of the semaphore from 0 to 1. 
+
+When the parent then gets a chance to run, it will call sem_wait() and find the value of the semaphore to be 1; 
+the parent will thus decrement the value (to 0) and return from sem wait() without waiting, also achieving the desired effect. value >=0 ?
+
+
+31.4 The Producer/Consumer (Bounded-Buffer) Problem
+
+the producer/consumer problem, or sometimes as the bounded buffer problem.
+
+
+
