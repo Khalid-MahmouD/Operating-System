@@ -187,4 +187,373 @@ a tip, but rather mandated by the semantics of wait, because wait always
 (a) assumes the lock is held when you call it, (b) releases said lock when putting the caller to sleep, and (c) re-acquires the lock just before returning.
 
 
+30.2 The Producer/Consumer (Bound Buffer) Problem
+the next problem will be known as producer/ consumer problem or bounded buffer problem,
+and it led to invinte the general semaphore(which can be used as either lock or condition variable).
 
+Imagine one or more producer threads and one or more consumer threads. 
+Producers produce data items andwish to place themin a buffer;
+consumers grab data items out of the buffer consume them in some way.
+
+multi-threaded web server, a producer puts HTTP requests into a work queue(bounded buffer); 
+consumer thread take requests out of this queue and process them.
+
+A bounded buffer is also used when you pipe the output of one program into another,
+grep foo file.txt | wc -l. // shell UNIX commend.
+this running two processes concurrently; grep writes lines from file.txt
+with the string foo in them to what it thinks is stander output;
+
+redirect the output what it called in UNIX pipe(pipe system call), 
+The other end of this pipe is connected to the standard input of the process wc, 
+which simply counts the number of lines in the input stream and prints out the result.
+grep is the producer; wc is the consumer; between them is bounded buffer (in-kernel),
+
+Because the bounded buffer is a shared resource, we must of course require synchronized access to it, fear of a race condition arise
+the first thing we need is a shared buffer, into which producer puts data, and out of which consumer takes data.
+single integer (you can use pointer to data structure into this slot instead), 
+and the two inner routine to put a value into the shared buffer, and to get a value out of buffer.
+
+int buffer;
+int count = 0; // initially, empty
+
+void put(int value) {
+ assert(count == 0);
+	 count = 1;
+	 buffer = value;
+	
+}
+
+int get() {
+	 assert(count == 1);
+	 count = 0;
+	 return buffer;
+	
+}
+the put() routine 
+assumes buffer is empty chack it by assertion, 
+put the value into the shared buffer, 
+and making it full by setting count to 1.
+
+the get() routine does the opposite, setting buffer emty count = 0,
+returning value, it is a single entry later will be generized to queue.
+the odds should be obvious:
+
+1st: only put data into buffer when count = 0(empty_), and only get data from buffer when count = 1 (full_)
+
+2nd: if we write the synchronization code such that producer put when buffer is full, consumer get when buffer is empty.
+	we have done something wrong (and in this code, an assertion will fire).
+
+void* producer(void* arg) {
+	 int i;
+	 int loops = (int)arg;
+	 for (i = 0; i < loops; i++) {
+		 put(i);
+	 }
+
+}
+void* consumer(void* arg) {
+	int i;
+	while (1) {
+		int tmp = get();
+		printf("%d\n", tmp);
+
+	}
+}
+;--------------------------------Producer/Consumer Threads (Version 1)
+
+producer thread puts and integer into the shard buffer loops number of times,
+consumer thread gets data out of that shared buffer (forever), printing out the data item it pulled from the shared buffer.
+
+;------------------------------------------------------------------------------------------------------
+A Broken Solution
+we just have a single producer and a single consumer. obviously put() and get() have critical section within them,
+put() updates the buffer, get() read from it.
+however putting a lock around the code doesn't work; we need something more.(condition variable).
+first try this  we have a single condition variable cond and associated lock mutex.
+
+cond_t cond;
+mutex_t mutex;
+
+void* producer(void* arg) {
+	int i;
+	for (i = 0; i < loops; i++) {
+		Pthread_mutex_lock(&mutex);				// p1
+		if (count == 1)	//it is full?				// p2
+			Pthread_cond_wait(&cond, &mutex);		// p3
+		put(i);							// p4
+		Pthread_cond_signal(&cond);				// p5
+		Pthread_mutex_unlock(&mutex);				// p6
+	}
+}
+
+void* consumer(void* arg) {
+	int i;
+	for (i = 0; i < loops; i++) {
+		Pthread_mutex_lock(&mutex);				// c1
+		if (count == 0)						// c2
+			Pthread_cond_wait(&cond, &mutex);		// c3
+		int tmp = get();					// c4
+		Pthread_cond_signal(&cond);				// c5
+		Pthread_mutex_unlock(&mutex);			 	// c6
+		printf("%d\n", tmp);
+	}
+}
+;-------------------------------------------------Producer/Consumer: Single CV and If Statement
+
+Let’s examine the signaling logic between producers and consumers.
+When a producer wants to fill the buffer, it waits for it to be empty (p1–p3).
+The consumer has the exact same logic, but waits for a different condition: fullness (c1–c3).
+
+this code works, with single consumer and single producer.
+However, if we have more than one of these threads (e.g., two consumers), 
+the solution has two critical problems. What are they?
+
+Assume there are two consumers (Tc1 and Tc2) and one producer (Tp).
+1st a consumer (Tc1) runs;  it acquires the lock (c1), 
+    checks if any buffers are ready for consumption (c2), and finding that none are, 
+    waits (c3) (which releases the lock).
+
+2nd Tp runs. acquire the lock (p1), check if all buffers are full (p2), finding that is not is this case,
+    go ahead and fill the buffer (p4), signaling that the buffer has been filled(p5),
+    moving waiting thread tc1 from sleep to ready state.
+    it continues until realizing the buffer is full, at whick point it sleeps(p6, p1-p3).
+
+3rd problem here occurs: another consumer (Tc2) sneaks in and consumes the one existing value in the buffer
+    (c1, c2, c4, c5, c6) c3 the buffer is full.
+    Tc1 runs after acquire lock before returning from the wait.
+    call get() (c4), but there is no data !! no buffer to consume
+
+An assertion triggers, and the code has not functioned as desired. 
+we should have somehow prevented Tc1 from trying to consume because Tc2 snuck in, 
+and consumed the one value in the buffer that had been produced.
+
+🔥Signaling a thread only wakes them up; it is thus a hint that the state of the world has changed 
+ (in this case, that a value has been placed in the 0uffer), 
+ but there is no guarantee that when the woken thread runs, the state will still be as desired.
+
+Mesa semantics, after the first research that built a condition variable in such a manner [LR80]; the contrast, referred to as
+Hoare semantics, is harder to build but provides a stronger guarantee that the woken thread will run immediately upon being woken [H74].
+Virtually every system ever built employs Mesa semantics.
+
+;------------------------------------------------------------------------------------
+Better, But Still Broken: While, Not If;
+
+Fortunately, this fix is easy (Figure 30.7): change the if to a while. 
+Think about why this works; 
+
+now consumer Tc1 wakes up and (with the lock held) immediately re-checks the state of the shared variable (c2). 
+If the buffer is empty at that point,
+the consumer simply goes back to sleep (c3). 
+
+The corollary if is also changed to a while in the producer (p2).
+Thanks to Mesa semantics, a simple rule to remember with condition variables is to always use while loops. 
+Some times you don’t have to recheck the condition, but it is always safe to do so; just do it and be happy.
+
+cond_t cond;
+mutex_t mutex;
+
+void* producer(void* arg) {
+	int i;
+	for (i = 0; i < loops; i++) {
+		Pthread_mutex_lock(&mutex);				// p1
+		While(count == 1)	//it is full?			// p2
+			Pthread_cond_wait(&cond, &mutex);		// p3
+		put(i);							// p4
+		Pthread_cond_signal(&cond);				// p5
+		Pthread_mutex_unlock(&mutex);				// p6
+	}
+}
+
+void* consumer(void* arg) {
+	int i;
+	for (i = 0; i < loops; i++) {
+		Pthread_mutex_lock(&mutex);				// c1
+		while(count == 0)					// c2
+			Pthread_cond_wait(&cond, &mutex);		// c3
+		int tmp = get();					// c4
+		Pthread_cond_signal(&cond);				// c5
+		Pthread_mutex_unlock(&mutex);			 	// c6
+		printf("%d\n", tmp);
+	}
+}
+
+However, this code still has a bug, the second of two problems mentioned above.
+1st single condition variable
+2nd The problem occurs when two consumers run first (Tc1 and Tc2), and both go to sleep (c3). 
+    Then, a producer runs(Tp), put a value in the buffer, wakes one of the consumers (say Tc1), and goes back to sleep. 
+    Now we have one consumer ready to run (Tc1), and two threads sleeping on a condition (Tc2 and Tp).
+    And we are about to cause a problem to occur: things are getting exciting!
+
+The consumer Tc1 then wakes by returning from wait() (c3), re-checks the condition (c2), 
+and finding the buffer full (count = 1), consumes the value (c4). 
+This consumer then, critically, signals on the condition (c5),  waking one thread that is sleeping. 
+
+However, which thread should it wake? Because the consumer has emptied the buffer, it clearly should wake the producer. 
+However, if it wakes the consumer Tc2 (which is definitely possible, depending on how the wait queue ismanaged), we have a problem.
+
+Specifically, the consumer Tc2 will wake up and find the buffer empty (c2), and go back to sleep (c3). 
+The producer Tp, which has a value to put into the buffer, is left sleeping. 
+The other consumer thread, Tc1, also goes back to sleep. All three threads are left sleeping, a clear bug;
+
+#Using while loops around conditional checks also handles the case where spurious wakeups occur.
+#Signaling is clearly needed, but must be more directed. A consumer should not wake other consumers, only producers, and vice-versa.
+
+;-----------------------------------------------------------------------------------------------
+The Single Buffer Producer/Consumer Solution
+small solution: use two condition variables, inorder to properly signal which type of thread should wake up when state of system changes.
+filled ? wake up consumer, emty ? wake up producer :D.
+By doing so, the second problemabove is avoided by design: a consumer can never accidentally wake a consumer, 
+and a producer can never accidentally wake a producer.
+
+cond_t empty, fill;
+mutex_t mutex;
+
+void* producer(void* arg) {
+	int i;
+	for (i = 0; i < loops; i++) {
+		Pthread_mutex_lock(&mutex);				// p1
+		While(count == 1)	//it is full?			// p2
+			Pthread_cond_wait(&cond, &mutex);		// p3
+		put(i);							// p4
+		Pthread_cond_signal(&fill);				// p5
+		Pthread_mutex_unlock(&mutex);				// p6
+	}
+}
+
+void* consumer(void* arg) {
+	int i;
+	for (i = 0; i < loops; i++) {
+		Pthread_mutex_lock(&mutex);				// c1
+		while(count == 0)					// c2
+			Pthread_cond_wait(&cond, &mutex);		// c3
+		int tmp = get();					// c4
+		Pthread_cond_signal(&empty);				// c5
+		Pthread_mutex_unlock(&mutex);			 	// c6
+		printf("%d\n", tmp);
+	}
+}
+
+;-------------------------------------------------------------------------------------------
+The Final Producer/Consumer Solution
+
+The last change we make is to enable more concurrency and efficiency;
+we add more buffer slots.
+so that multiple values can be produced before sleeping, 
+and similarly multiple values can be consumed before sleeping.
+with a single producer and consumer, it reduces context switches;
+
+multiple producers or consumers or both, it even allows concurrent producing or consuming to take place, thus increasing concurrency.
+small change from our current solution.
+
+int buffer[MAX];
+int fill = 0;
+int use = 0;
+int count = 0;
+
+void put(int value) {
+	buffer[fill] = value;
+	fill = (fill + 1) % MAX;
+	count++;
+}
+int get() {
+	int tmp = buffer[use];
+	use = (use + 1) % MAX;
+	count--;
+	return tmp;
+}
+;---------------------------------------------------The Final Put and Get Routines
+cond_t empty, fill;
+mutex_t mutex;
+
+void* producer(void* arg) {
+	int i;
+	for (i = 0; i < loops; i++) {
+		Pthread_mutex_lock(&mutex);				// p1
+		While(count == MAX)	//it is full?			// p2
+			Pthread_cond_wait(&cond, &mutex);		// p3
+		put(i);							// p4
+		Pthread_cond_signal(&fill);				// p5
+		Pthread_mutex_unlock(&mutex);				// p6
+	}
+}
+
+void* consumer(void* arg) {
+	int i;
+	for (i = 0; i < loops; i++) {
+		Pthread_mutex_lock(&mutex);				// c1
+		while(count == 0)					// c2
+			Pthread_cond_wait(&cond, &mutex);		// c3
+		int tmp = get();					// c4
+		Pthread_cond_signal(&empty);				// c5
+		Pthread_mutex_unlock(&mutex);			 	// c6
+		printf("%d\n", tmp);
+	}
+}
+;---------------------------------------------------The FinalWorking Solution
+
+The first change for this final solution is within the buffer structure itself and the corresponding put() and get().
+We also slightly change the conditions that producers and consumers check in order to determine whether to sleep or not.
+
+A producer only sleeps if all buffers are currently filled (p2); similarly, 
+A consumer only sleeps if all buffers are currently empty (c2). 
+And thus we solve the producer/consumer problem.
+
+
+30.3 Covering Conditions
+
+// how many bytes of the heap are free?
+int bytesLeft = MAX_HEAP_SIZE;
+
+// need lock and condition too
+cond_t c;
+mutex_t m;
+void*
+ allocate(int size) {
+	Pthread_mutex_lock(&m);
+	while (bytesLeft < size)
+		 Pthread_cond_wait(&c, &m);
+	void* ptr = ...; // get mem from heap
+	bytesLeft -= size;
+	Pthread_mutex_unlock(&m);
+	return ptr;
+}
+
+void free(void* ptr, int size) {
+	 Pthread_mutex_lock(&m);
+	 bytesLeft += size;
+	 Pthread_cond_signal(&c); // whom to signal??
+	 Pthread_mutex_unlock(&m);
+	
+}
+
+when thread calls into memory allocation code, wait for more memory to be free.
+Conversely, when a thread frees memory, it signals that more memory is free. 
+However, our code above has a problem: which waiting thread (there can be more than one) should be woken up?
+
+
+
+Consider the following scenario.
+Assume there are zero bytes free;
+thread Ta calls allocate(100),
+thread Tb which asks for less memory by calling allocate(10).
+Both Ta and Tb go to sleep there aren't enogh free bytes to satisfy either of these requests.
+
+Tc, calls free(50)
+when it calls signal to wake a waiting thread, it might not wake the correct waiting thread, Tb, 
+which is waiting for only 10 bytes to be freed;
+
+Thus,
+the code in the figure does not work, as the thread waking other threads
+does not know which thread (or threads) to wake up.
+
+one solution 
+replace the pthread_cond_signal() call by pthread_cond_broadcast(), wake all waiting threads.
+we guarantee that any threads that should be woken are.
+needlessly, bad performance.
+
+Those threads will simply wake up, re-check the condition, and then go immediately back to sleep.
+
+Lampson and Redell call such a condition a covering condition, as it covers all the cases where a thread needs to wake up (conservatively);
+The astute reader might also have noticed we could have used this approach earlier 
+(see the producer/consumer problem with only a single condition variable).
+broadcast may be the most straightforward solution available.
