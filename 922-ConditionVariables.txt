@@ -1,0 +1,190 @@
+we developed the notion of a lock and seen how one can be properly built 
+with the right combination of hardware and OS support.
+
+locks is not the only primitives that are needed to build concurrent programs.
+in many cases where a thread wiches to check whether a condition is true before continuing its excution.
+
+a parent thread might wish to check whether a child thread has completed before continuing( this is often called a join() );
+how such a wait be implemented? 
+
+void *child(void *arg) {
+   printf("child\n");
+   // XXX how to indicate we are done?
+   return NULL;
+}
+
+int main(int argc, char *argv[]) {
+  printf("parent: begin\n");
+  pthread_t c;
+  Pthread_create(&c, NULL, child, NULL); // create child
+  // XXX how to wait for child?
+  printf("parent: end\n");
+  return 0;
+}
+;----------------------------------------------A Parent Waiting For Its Child
+we would like to see the following output:
+parant: begin
+child
+parant: end
+
+we could try using a shared variable, it works but inefficient, parant just spin wasting CPU time.
+we would like here instead put the parant to sleep until the condition we  are waiting for (child done executing) comes true.
+
+volatile int done = 0;
+
+void *child(void *arg) {
+  printf("child\n");
+  done = 1;
+  return NULL;
+}
+
+
+int main(int argc, char *argv[]) {
+    printf("parent: begin\n");
+    pthread_t c;
+    Pthread_create(&c, NULL, child, NULL); // create child
+    while (done == 0)
+      ; // spin
+    printf("parent: end\n");
+    return 0;
+}
+;-------------------------------Parent Waiting For Child: Spin-based Approach
+
+#how to wait for a condition?
+it useful for a thread to wait for some condition to become true before proceeding.
+the simple approach, just spinning until the condition become true, inefficient and wastes CPU cycles, can be correct.
+how should a thread wait for a condition?
+
+
+30.1 Definition and Routines
+
+to wait for a condition to become true, a thread can make use of what is know as a condition variable.
+is an explicit queue threads can put themselves on when some state of excution(condition) is not desired(by waiting on the condition);
+
+some other thread, when it changes state, then can wake one or more of those waiting threads, allow them to continue (by signaling on the condition).
+
+idea of private “private semaphores” later named a “condition variable”.
+
+to declare such a condition variable, on simply writes something like this: pthread_cond_t c; declare c as condition variable,
+(also initialization required).
+condition variable has two operations associated with it: wait() and signal().
+wait() call is executed when a thread wishes put itself to sleep;
+signal() call is executed when a thead has changed something in the program and thus
+	wants to wake a sleeping thread waiting on this condition.
+
+the POSIX calls look like this:
+pthread_cond_wait(pthread_cond_t *c, pthread_mutex_t *m);
+pthread_cond_signal(pthread_cond_t *c);
+
+One thing you might notice about the wait() call is that it also takes a mutex as a parameter;
+it assumes that this mutex  is locked when wait() is called.
+wait() responsibility of wait() is to:
+1️⃣️release the lock and put the calling thread to sleep (atomically);
+2️⃣️when the thread wakes up it must re-acquire the lock before returning to the caller.
+#preventing race conditions from occurring when it trying to put itself to sleep.
+
+int done = 0;
+pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t c = PTHREAD_COND_INITIALIZER;
+
+void thr_exit() {
+    Pthread_mutex_lock(&m);
+    done = 1; // change state!!
+    Pthread_cond_signal(&c);
+    Pthread_mutex_unlock(&m);
+}
+void *child(void *arg) {
+    printf("child\n");
+    thr_exit();
+    return NULL;
+}
+void thr_join() {
+    Pthread_mutex_lock(&m); // acquire lock
+    while (done == 0)
+       Pthread_cond_wait(&c, &m);
+    Pthread_mutex_unlock(&m);
+}
+int main(int argc, char *argv[]) {
+   printf("parent: begin\n");
+   pthread_t p;
+   Pthread_create(&p, NULL, child, NULL);
+   thr_join();
+   printf("parent: end\n");
+   return 0;
+}
+;-----------------------------------Parent Waiting For Child: Use A Condition Variable
+
+There are two cases to consider.
+1️⃣️ the parent creates the child but continues running itself (one single processor) and thus call 
+thr_join()  to wait for child thread to complete.
+    In this case, it will acquire the lock, 
+    check if the child is done (it is not), 
+    and put itself to sleep by calling wait()  (hence releasing the lock).
+    
+    child will run,  print message and call 
+thr_exit() to wake the parent thread;
+    this code just grabs the lock, 
+    sets the state variable done, 
+    and signals the parent thus waking it.
+Finally, 
+the parent will run (returning from wait() with the lock held), 
+unlock the lock, and print the final message “parent: end”.
+
+2️⃣️In the second case,
+ the child runs immediately upon creation, 
+ sets done to 1, calls signal to wake a sleeping thread (but there is none, so it just returns), and is done. 
+ The parent then runs, calls thr join(), sees that done is 1,  and thus does not wait and returns.
+
+uses a while loop instead of just an if statement when deciding whether to wait on the condition.
+
+To make sure you understand the importance of each piece of the thr exit() and thr join() code, let’s try a few alternate implementations.
+
+1st we need the state variable done. ?
+whould this work?
+void thr_exit() {
+    Pthread_mutex_lock(&m);
+    Pthread_cond_signal(&c);
+    Pthread_mutex_unlock(&m);
+}
+
+void thr_join() {
+    Pthread_mutex_lock(&m);
+    Pthread_cond_wait(&c, &m);
+    Pthread_mutex_unlock(&m);
+}
+1️⃣️⚠️imagine the case where the child run immedialty 2nd case,
+and calls thr_exit() immediatly; in this case it will signal, but there is no thread sleep!!.
+
+when the parant runs, and call thr_join it will stuck waiting and no thread will ever wake it🔐️.
+
+🔥️you should appreciate the importance of the state variable done; 
+   it records the value the threads are interested in knowing. 
+   the sleeping, waking, and locking all are built around it.
+
+2️⃣️ ⚠️we imagine that one does not need to hold a lock in order to signal and wait.
+  What problem could occur here? Think about it!
+void thr_exit() {
+    done = 1;
+    Pthread_cond_signal(&c);
+}
+
+void thr_join() {
+   if (done == 0)
+   Pthread_cond_wait(&c);
+}
+
+race condition,
+if the parent calls thr_join() and then checks the value of done, 
+it will see that it is 0 and thus try to go to sleep.
+before call wait to go to sleep, the parent is inturrpted, and the child runs.
+and changing the state variable done to 1 and signals, but no thread is wating and thus no 
+thread is woken.
+back from interrupt the parent runs again, it  sleeps forever, so sad.
+
+
+ALWAYS HOLD THE LOCK WHILE SIGNALING
+a tip, but rather mandated by the semantics of wait, because wait always
+(a) assumes the lock is held when you call it, (b) releases said lock when putting the caller to sleep, and (c) re-acquires the lock just before returning.
+
+
+
