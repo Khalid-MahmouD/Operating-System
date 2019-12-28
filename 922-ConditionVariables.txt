@@ -236,8 +236,8 @@ and making it full by setting count to 1.
 
 the get() routine does the opposite, setting buffer emty count = 0,
 returning value, it is a single entry later will be generized to queue.
-the odds should be obvious:
 
+the odds should be obvious:
 1st: only put data into buffer when count = 0(empty_), and only get data from buffer when count = 1 (full_)
 
 2nd: if we write the synchronization code such that producer put when buffer is full, consumer get when buffer is empty.
@@ -313,12 +313,12 @@ Assume there are two consumers (Tc1 and Tc2) and one producer (Tp).
     checks if any buffers are ready for consumption (c2), and finding that none are, 
     waits (c3) (which releases the lock).
 
-2nd Tp runs. acquire the lock (p1), check if all buffers are full (p2), finding that is not is this case,
+2nd producer Tp runs. acquire the lock (p1), check if all buffers are full (p2), finding that is not is this case,
     go ahead and fill the buffer (p4), signaling that the buffer has been filled(p5),
-    moving waiting thread tc1 from sleep to ready state.
+    moving waiting thread tc1 from sleep to ready state.(about to-run-state but not run ye).
     it continues until realizing the buffer is full, at whick point it sleeps(p6, p1-p3).
 
-3rd problem here occurs: another consumer (Tc2) sneaks in and consumes the one existing value in the buffer
+3rd problem here occurs: another consumer (Tc2) sneaks(context,interrup) in and consumes the one existing value in the buffer
     (c1, c2, c4, c5, c6) c3 the buffer is full.
     Tc1 runs after acquire lock before returning from the wait.
     call get() (c4), but there is no data !! no buffer to consume
@@ -402,7 +402,8 @@ The other consumer thread, Tc1, also goes back to sleep. All three threads are l
 The Single Buffer Producer/Consumer Solution
 small solution: use two condition variables, inorder to properly signal which type of thread should wake up when state of system changes.
 filled ? wake up consumer, emty ? wake up producer :D.
-By doing so, the second problemabove is avoided by design: a consumer can never accidentally wake a consumer, 
+
+By doing so, the second problem above is avoided by design: a consumer can never accidentally wake a consumer, 
 and a producer can never accidentally wake a producer.
 
 cond_t empty, fill;
@@ -546,7 +547,7 @@ Thus,
 the code in the figure does not work, as the thread waking other threads
 does not know which thread (or threads) to wake up.
 
-one solution 
+🔥️one solution 
 replace the pthread_cond_signal() call by pthread_cond_broadcast(), wake all waiting threads.
 we guarantee that any threads that should be woken are.
 needlessly, bad performance.

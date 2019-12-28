@@ -44,7 +44,7 @@ we discuss a few few salient aspects of the interfaces here.
 sem_wait() will either return right away, (because the value of the semaphore was one or higher when we called sem_wait())
  or it will case the caller to suspend execution waiting for a subsequent post.
 decrement the value of semaphore.
-multiple calling threads may call into sem wait(), and thus all be queued waiting to be woken.
+multiple calling threads may call into sem_wait(), and thus all be queued waiting to be woken.
 
 sem_post() does not wait for some particular condition to hold,
 increments the value of the semaphore and then, 
@@ -70,20 +70,20 @@ we can see that the initial value should be 1.
 1️⃣️
 let’s imagine a scenario with two threads.
 The first thread (Thread 0) calls sem_wait(); decrement the value of semaphore, changed to 0.
-thread wait if value < 0 it is equal 0, so it will simply return and continue;
+thread wait if not greater than or equal 0  it is equal 0, so it will simply return and continue;
 
 thread 0 now free to enter the critical section. 
-If no other thread tries to acquire the lock while Thread 0 is inside the critical section, when it calls sem post(), 
+If no other thread tries to acquire the lock while Thread 0 is inside the critical section, when it calls sem_post(), 
 it will simply restore the value of the semaphore to 1 (and not wake any waiting thread,  because there are none).
 Table 31.1 shows a trace of this scenario.
 2️⃣️
-A more interesting case arises when Thread 0 “holds the lock” (i.e., it has called sem wait() but not yet called sem post()), 
-and another thread (Thread 1) tries to enter the critical section by calling sem wait().
+A more interesting case arises when Thread 0 “holds the lock” (i.e., it has called sem_wait() but not yet called sem_post()), 
+and another thread (Thread 1) tries to enter the critical section by calling sem_wait().
 
 In this case, Thread 1 will decrement the value of the semaphore to -1, and thus wait 
 (putting itself to sleep and relinquishing the processor). 
 
-When Thread 0 runs again, it will eventually call sem post(), 
+When Thread 0 runs again, it will eventually call sem_post(), 
 incrementing the value of the semaphore back to zero, and then wake the waiting thread (Thread 1), 
 
 which will then be able to acquire the lock for itself. 
@@ -141,12 +141,14 @@ to wait for the condition of the child finishing its execution to become true.
 
 However, this raises the question: what should the initial value of this semaphore be?
 the value of the semaphore should be set to is 0.
+(sem<0)→sleep
+(sem≥0)→awake
 
 There are two cases to consider.
 1️⃣️First, let us assume that the parent creates the child but the child has not run yet 
     (i.e., it is sitting in a ready queue but not running). 
 
-  In this case (Table 31.3), the parent will call sem_wait() before the child has called sem post(); 
+  In this case (Table 31.3), the parent will call sem_wait() before the child has called sem_post(); 
   we’d like the parent to wait for the child to run.
   The only way this will happen is if the value of the semaphore is not greater than 0; hence, 0 is the initial value. value < 0 ?
 
@@ -158,12 +160,382 @@ and wake the parent, which will then return from sem wait() and finish the progr
    in this case, the child will first call sem_post(), thus incrementing the value of the semaphore from 0 to 1. 
 
 When the parent then gets a chance to run, it will call sem_wait() and find the value of the semaphore to be 1; 
-the parent will thus decrement the value (to 0) and return from sem wait() without waiting, also achieving the desired effect. value >=0 ?
+the parent will thus decrement the value (to 0) and return from sem_wait() without waiting, also achieving the desired effect. value >=0 ?
 
 
 31.4 The Producer/Consumer (Bounded-Buffer) Problem
 
 the producer/consumer problem, or sometimes as the bounded buffer problem.
 
+First Attempt
+Our first attempt at solving the problem introduces two semaphores, empty and full, 
+which the threads will use to indicate when a buffer entry has been emptied or filled, respectively.
+
+the producer first waits for a buffer to become empty in order to put data into it, 
+and the consumer similarly waits for a buffer to become filled before using it.
+assume ->  MAX = 1 (there is only one buffer in the array)
+// attempt of more than producer and consumer.
+int buffer[MAX];
+int fill = 0;
+int use = 0;
+void put(int value) {
+    buffer[fill] = value;    // line f1
+    fill = (fill + 1) % MAX; // line f2
+}
+int get() {
+   int tmp = buffer[use];   // line g1
+   use = (use + 1) % MAX;   // line g2
+   return tmp;
+}
+;------------------------------------------The Put and Get Routines
+
+sem_t empty;
+sem_t full;
+void *producer(void *arg) {
+    int i;
+    for (i = 0; i < loops; i++) {
+        sem_wait(&empty);		// line P1
+       put(i);				// line P2	
+       sem_post(&full);			// line P3
+    }
+}
+
+void *consumer(void *arg) {
+    int i, tmp = 0;
+    while (tmp != -1) {
+       sem_wait(&full);			// line C1
+       tmp = get();			// line C2
+       sem_post(&empty);		// line C3
+       printf("%d\n", tmp);
+    }
+}
+int main(int argc, char *argv[]) {
+   // ...
+   sem_init(&empty, 0, MAX); // MAX buffers are empty to begin with...
+   sem_init(&full, 0, 0);    // ... and 0 are full
+  // ...
+}
+
+;-----------------------------------------Adding the Full and Empty Conditions
+
+🔥️Imagine again there are two threads, a producer and a consumer.
+Let us examine a specific scenario on a single CPU.
+
+assume consumer gets to run first hit line c1 calling sem_wait(&full), 
+(full) initialized to 0, the call will decrement value full to -1, negative so is blocked,
+block consumer and wait for thread call sem_post() on full, as desired.
+
+(sem<0)→sleep→stop execution→wait for to be waken.
+(sem≥0)→awake→continue execution→the condition wrong
+
+assume producer then runs, hit line p1, calling sem_wait(&empty), 
+(empty) initialized to value 1, (empty) decrement from 1 to 0,
+producer will put a data into first entry of buffer(line p2).
+the producer will then continue on to P3 and call sem_post(&full), 
+changing the value of the (full) semaphore from -1 to 0 and waking the consumer (e.g., move it from blocked to ready)
+
+In this case, one of two things could happen. 
+If the producer continues to run, 
+it will loop around and hit line P1 again. sem_wait(&empty),
+This time, however, it would block, as the empty semaphore’s value is 0. decrement to -1, wait. 
+
+If the producer instead was interrupted and the consumer began to run, it would call
+sem_wait(&full) (line c1) and find that the buffer was indeed full and thus consume it. 
+In either case, we achieve the desired behavior.
+;-------------------------------------------------------------------------------------------------------
+you can try it for muliple consumers or muliple producers, say MAX = 10;
+now we have a race condition, hit in put(), get()
+
+Imagine two producers (Pa and Pb)  both calling into put() at roughly the same time.
+
+Assume producer Pa gets to run first, and just starts to fill the first buffer entry (fill = 0 at line f1).
+Before Pa gets a chance to increment the fill counter to 1, it is interrupted.
+
+Producer Pb starts to run, and at line f1 it also puts its data into the 0th element of buffer,
+which means that the old data there is overwritten!
+
+we don’t want any data from the producer to be lost.
+;-----------------------------------------------------------------------------
+A Solution: Adding Mutual Exclusion🔐️👀️
+what we’ve forgotten here is mutual exclusion, 
+the filling of a buffer and incrementing of the index into the buffer is a critical section,
+So let’s use our friend the binary semaphore and add some locks.
+
+sem_t empty;
+sem_t full;
+sem_t mutex; //(NEW LINE)
+void *producer(void *arg) {
+    int i;
+    for (i = 0; i < loops; i++) {
+	sem_wait(&mutex);		// line p0 (NEW LINE)     
+	sem_wait(&empty);		// line P1
+       put(i);				// line P2	
+       sem_post(&full);			// line P3
+       sem_post(&mutex);		// line P4 (NEW LINE)
+    }
+}
+
+void *consumer(void *arg) {
+    int i, tmp = 0;
+    while (tmp != -1) {
+       sem_wait(&mutex)			// line C0 (NEW LINE)
+       sem_wait(&full);			// line C1
+       tmp = get();			// line C2
+       sem_post(&empty);		// line C3
+       sem_post(&mutex);		// libe C4 (NEW LINE)
+       printf("%d\n", tmp);
+    }
+}
+int main(int argc, char *argv[]) {
+   // ...
+   sem_init(&empty, 0, MAX); // MAX buffers are empty to begin with...
+   sem_init(&full, 0, 0);    // ... and 0 are full
+   sem_init(&mutex, 0, 1);  // mutex=1 because it is a lock (NEW LINE)   
+   // ...
+}
+;-----------------------------------------------------------------Adding Mutual Exclusion (Incorrectly)
+
+Now we’ve added some locks around the entire put()/get() parts of the code, as indicated by the NEW LINE comments.
+but it also doesn’t work. Why? Deadlock.
 
 
+#Why does deadlock occur? 
+Take a moment to consider it; try to find a case where deadlock arises. 
+#What sequence of steps must happen for the program to deadlock?
+
+Avoiding Deadlock
+
+imagin two threads, one producer and one consumer.
+
+a comsumer run, acquire mutex (line C0, lock), call sem_wait() on full semaphore (line C1);
+no data yet it blocked and yeild the CPU; here the problem he still held the lock, before he release it before go wait.
+
+a producer then run. it has data to produce and if it run, it would be able to wake consumer thread and all would be good.
+Unfortunately, the first thing it does is call sem wait() on the binary mutex semaphore (line p0). 
+The lock is already held. Hence, the producer is now stuck waiting too!!
+
+
+The consumer holds the mutex and is waiting for the someone to signal full. 
+The producer could signal full but is waiting for the mutex. 
+Thus, the producer and consumer are each stuck waiting for each other: a classic deadlock.
+
+;-----------------------------------------------------------------------------
+Finally, A Working Solution
+
+As you can see, we simply move the mutex acquire and release to be just around the critical section;
+the full and empty wait and signal code is left outside.
+
+The result is a simple and working bounded buffer, a commonly-used pattern in multi-threaded programs.
+
+sem_t empty;
+sem_t full;
+sem_t mutex; //(NEW LINE)
+void *producer(void *arg) {
+    int i;
+    for (i = 0; i < loops; i++) {
+	sem_wait(&empty);		// line P1	
+	sem_wait(&mutex);		// line p1.5 (MOVED MUTEX HERE...)     
+	put(i);				// line P2
+	sem_post(&mutex);		// line P2.5 (... AND HERE)	
+       sem_post(&full);			// line P3
+    }
+}
+
+void *consumer(void *arg) {
+    int i, tmp = 0;
+    while (tmp != -1) {
+       sem_wait(&full);			// line C1
+       sem_wait(&mutex)			// line C1.5 (MOVED MUTEX HERE...)
+       tmp = get();			// line C2
+       sem_post(&mutex);		// libe C2.5 (... AND HERE)
+       sem_post(&empty);		// line C3
+       printf("%d\n", tmp);
+    }
+}
+int main(int argc, char *argv[]) {
+   // ...
+   sem_init(&empty, 0, MAX); // MAX buffers are empty to begin with...
+   sem_init(&full, 0, 0);    // ... and 0 are full
+   sem_init(&mutex, 0, 1);  // mutex=1 because it is a lock (NEW LINE)   
+   // ...
+}
+;---------------------------------------------------------------------------Adding Mutual Exclusion (Correctly)
+
+31.5 Reader-Writer Locks
+another classic problem stems from the desire for a more 
+flexible locking primitive that admits that different data structure accesses might require different kinds of locking.
+
+for example, imagine a number of concurrent list operations, including inserts and simple lookups. 
+While inserts change the state of the list (and thus a traditional critical section makes sense), 
+lookups simply read the data structure; as long as we can guarantee that no insert is on-going, 
+we can allow many lookups to proceed concurrently.
+typedef struct _rwlock_t {
+      sem_t lock; // binary semaphore (basic lock)
+      sem_t writelock; // used to allow ONE writer or MANY readers
+      int readers; // count of readers reading in critical section
+} rwlock_t;
+
+void rwlock_init(rwlock_t *rw) {
+   rw->readers = 0;
+   sem_init(&rw->lock, 0, 1);
+   sem_init(&rw->writelock, 0, 1);
+}
+
+void rwlock_acquire_readlock(rwlock_t *rw) {
+   sem_wait(&rw->lock);
+   rw->readers++;
+   if (rw->readers == 1)
+   sem_wait(&rw->writelock); // first reader acquires writelock
+   sem_post(&rw->lock);
+}
+
+void rwlock_release_readlock(rwlock_t *rw) {
+   sem_wait(&rw->lock);
+   rw->readers--;
+   if (rw->readers == 0)
+   sem_post(&rw->writelock); // last reader releases writelock
+   sem_post(&rw->lock);
+}
+
+void rwlock_acquire_writelock(rwlock_t *rw) {
+    sem_wait(&rw->writelock);
+}
+
+void rwlock_release_writelock(rwlock_t *rw) {
+    sem_post(&rw->writelock);
+}
+
+;------------------------------------------------------------A Simple Reader-Writer Lock
+
+The code is pretty simple. 
+If some thread wants to update the data structure in question,  it should call the new pair of synchronization operations: 
+rwlock_acquire_writelock(), to acquire a write lock, and
+rwlock_release_writelock(), to release it.
+
+Internally, these simply use the writelock semaphore to ensure that only a single writer can acquire
+the lock and thus enter the critical section to update the data structure in question.
+
+More interesting is the pair of routines to acquire and release read locks.
+
+When acquiring a read lock,
+\ first \ acquires lock and then increments the readers variable to track how many readers are currently inside the data structure.
+
+🔐️🔥️The important step then taken within rwlock_acquire_readlock() occurs when the first reader acquires the lock; 
+in that case, the reader also acquires the write lock by calling sem_wait() on the writelock semaphore, 
+and then finally releasing the lock by calling sem_post().
+
+Thus, once a reader has acquired a read lock, more readers will be allowed to acquire the read lock too; 
+however, any thread that wishes to acquire the write lock will have to wait until all readers are finished; 
+
+⏩️the last one to exit the critical section calls sem_post() on “writelock” and thus enables a waiting writer to acquire the lock.
+This approach works (as desired), but does have some negatives, espcially when it comes to fairness.
+it would be relatively easy for readers to starve writers.
+
+
+
+31.6 The Dining Philosophers
+One of the most famous concurrency problems posed,
+
+assume there are five “philosophers” sitting around a table. 
+Between each pair of philosophers is a single fork (and thus, five total). 
+The philosophers each have times where they think, and don’t need any forks, and times where they eat. 
+In order to eat, a philosopher needs two forks, both the one on their left and the one on their right. 
+
+The contention for these forks, and the synchronization problems that ensue, are what makes this
+a problem we study in concurrent programming.
+
+
+void Philosophers(){
+ while (1) {
+   think();
+   getforks();
+   eat();
+   putforks();
+ }
+}
+;------------------------basic loop of each philosopher:
+
+The key challenge, then, is to write the routines getforks() and putforks() such that there is no deadlock, 
+no philosopher starves and never gets to eat, and concurrency is high
+ (i.e., as many philosophers can eat at the same time as possible).
+
+helper functions to get us towards a solution. They are:
+int left(int p) { return p; }
+int right(int p) { return (p + 1) % 5; }
+
+When philosopher p wishes to refer to the fork on their left, they simply call left(p). 
+Similarly, the fork on the right of a philosopher p is referred to by calling right(p); 
+the modulo operator therein handles the one case where the last philosopher (p=4) tries to grab the fork on their right, which is fork 0.
+
+sem t forks[5].
+
+void getforks() {
+  sem_wait(forks[left(p)]);
+  sem_wait(forks[right(p)]);
+}
+
+void putforks() {
+  sem_post(forks[left(p)]);
+  sem_post(forks[right(p)]);
+}
+;---------------------------------------The getforks() and putforks() Routines
+
+Broken Solution
+initialize evey each semaphore to a value of 1 on fork array.
+to acquire the forks, grab a lock on each one: one on the left, one on the right.
+when done eating releas them, not simply as it sound.
+
+there is a fatel problem, each philosopher grab the frok on thier left, before any grab on his right,
+each will be stuck holding one fork waiting for another, forever.
+
+A Solution: Breaking The Dependency
+change how forks are acquired by at least one of the philosophers; indeed,
+let’s assume that philosopher 4 (the highest numbered one) acquires the forks in a different order.
+
+void getforks() {
+  if (p == 4) {
+   sem_wait(forks[right(p)]);
+   sem_wait(forks[left(p)]);
+  }else {
+   sem_wait(forks[left(p)]);
+   sem_wait(forks[right(p)]);
+  }
+}
+
+Because the last philosopher tries to grab right before left, 
+there is no situation where each philosopher grabs one fork and is stuck waiting for another; 
+the cycle of waiting is broken.
+
+another solution using those 5 functions
+for each n philosopher,
+
+void philosopher(int i){
+  while(1){
+    think();
+    take_forks(i);
+    east();
+    put_forks(i);	
+  }
+}
+
+void take_forks(int i){
+   lock(&mutex);
+	state[i] = HUNGRY;
+	test(i)
+   unlock(&mutex)
+   down(s[i]);
+}
+
+void put_forks(int i){
+   lock(&mutex);
+      state[i] = THINKING;
+      test(i);
+   unlock(&mutex);
+}
+
+void test(int i){
+ if(state[i] == HUNGRY && state[LEFT] != EATING && state[RIGHT] != EATING){
+   state[i] = EATING; 
+   up(i);
+ }
+}
