@@ -14,22 +14,21 @@ creating parent(e.g if() else(); )) doesn’t start running at main(), like you 
 
 “hello, world” had called fork() itself.
 
+2^ -1 = #children.
 noticed: the child isn’t an exact copy. Specifically, although
-it now has its own copy of the address space (i.e., its own private
-memory), its own registers, its own PC, and so forth,
+it now has its own copy of the address space (i.e., its own private memory), its own registers, its own PC, and so forth,
+so if it return some errors parent won't care.
 
-the value it returns
-to the caller of fork() is different. Specifically, while the parent receives
+the value it returns to the caller of fork() is different. Specifically, while the parent receives
 the PID of the newly-created child, the child is simply returned a 0.
 
-
-You might also have noticed: the output is not deterministic. When
-the child process is created, there are now two active processes in the system
+You might also have noticed: the output is not deterministic. 
+When the child process is created, there are now two active processes in the system
 that we care about: the parent and the child. Assuming we are running
-on a system with a single CPU (for simplicity), then either the child
-or the parent might run at that point.
+on a system with a single CPU (for simplicity), then either the child or the parent might run at that point.
 
 cpu shedualer, which process runs at a given moment in time.
+race codtion, critical section.
 
 //  Parent process and child process are running the same program, but it does not mean they are identical. 
 //OS allocate different data and state for these two processes and also control the flow of these processes can be different. See next example
@@ -52,3 +51,34 @@ int main()
     return 0; 
 } 
 
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+int main(int argc, char *argv[]){
+   printf("hello world (pid:%d)\n", (int) getpid());
+   int rc = fork(); // 
+   if (rc < 0) { // fork failed; exit
+       fprintf(stderr, "fork failed\n");
+     exit(1);
+   } else if (rc == 0) { // child (new process)
+       printf("hello, I am child (pid:%d)\n", (int) getpid());
+   } else { // parent goes down this path (main)
+       int wc = wait(NULL);
+     printf("hello, I am parent of %d (wc:%d) (pid:%d)\n", rc, wc, (int) getpid());
+}
+return 0;
+}
+prompt> ./p2
+hello world (pid:29266)
+hello, I am child (pid:29267)
+hello, I am parent of 29267 (wc:29267) (pid:29266)
+prompt>
+;-----------------This system call won’t return until the child has run and exited.
+	
+
+
+The exec system call is used to execute a file which is residing in an active process. When exec is called the previous executable file is replaced and new file is executed.
+
+replace code.

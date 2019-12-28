@@ -6,15 +6,15 @@ The basic idea is simple run one process for little while, then run another one 
 few challenges:
 	performance : adding excessive overhead to the system.
 	control	: giving control to CPU , OS in charge of resources; without control, process
-		  could simply run for ever access information he should not be allowed access.
+		  could simply run for ever access information he should not be allowed access. starvation, malisious, takeover machine.
 Both hardware and OS support required.
 
 6.1 Basic Technique: Limited Direct Execution
 to make a program run as fast as one might expected, just run program directly on CPU
 OS -> creates a process entry in process list(keep all running programe)
 	allocate some memory pages for it 
-	load programe code into memory from disk
-	locates its entry point the main()  Set up(initializing) stack with argc/argv
+	load programe code into memory from disk 50nsec
+	locates its entry point the main() 50nsec Set up(initializing) stack with argc/argv
 	Clear registers ,Execute call main()
 
 					program -> Run main()
@@ -64,7 +64,7 @@ II)hardware must save enough of caller's register state in order to able to retu
    and that done by push (PC, flags, and a few other registers on to pre-process kernal stack), 
 III)the return-from-trap will pop these values off the stack  and resume execution of the user-mode program.
 
-one other thing left ((how does the trap know which code to run inside the OS)) (can't specify an address to jump to)? 
+one other thing left ((how does the trap know which code to run inside the OS)) (can't specify an address to jump to)? IDT
 doing so make program jump anywhere into kernal which is a bad idea; kernel must carefully control which code executes upon a trap. 
 and that done by setting up trap-table at boot time.
 I)@boot the machine is in kernel mode, so it (free configure machine),
@@ -89,7 +89,7 @@ privilage operation (tell hardware where the trap table), try this instruction i
 runing process on CPU means OS not running.if the OS not Running how he can do any thing at all ?
 how we can gain control from CPU to OS, so he can switch between processes.
 
--A Cooperative Approach: Wait For System Calls
+-A Cooperative Approach: Wait For System Calls <-
  process that run for too long give up CPU so that OS can decide to run other task.
 in [M11], [A79] ->||
  what kind of these processes? transfer control to OS 
@@ -98,7 +98,7 @@ BY MAKING SYSTEM CALL, for example:
 	these kind of systems explicit include yeild system call, does nothing except transfer control to OS.
 BY SOME APPLICATION, for example:
 	divide by zero, access memory you should not to be able to access, it generatr trap OS take control (often terminate the process)
-in cooperative scheduling system, OS take control of CPU waiting for SYSTEM CALL, or an illegal opetation.
+in->cooperative scheduling system, OS take control of CPU waiting for SYSTEM CALL, or an illegal opetation.
 
 problem appear !!
 Passive Approach-> what if the process get in infinite loop, and never makes system call, what can OS Doing?
@@ -108,7 +108,7 @@ Passive Approach-> what if the process get in infinite loop, and never makes sys
  without some additional help from hardware, OS can't do so much when the process refused to make system call(mistake), and return control to OS.
  How can OS gain Control ? is this case?
 
- [M+63]timer interrupt, timer device can be programmed to raise interrupt every Xmillisecond; so Currently running process haled(stop), 
+ [M+63]timer interrupt🔥️, timer device can be programmed to raise interrupt every Xmillisecond; so Currently running process haled(stop), 
        and pre-configured interrupt handler in the OS Run. 
        at this point OS regained control of CPU, can do what it pleases ; #معلم 
        stop the current process, and start a different one;

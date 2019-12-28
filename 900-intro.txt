@@ -30,7 +30,8 @@ allow many programe to seemingly run at once;
 
 you can run or stop them, or tell OS which to run, with help of interfaces(APIs) use to communicate your desire to OS;
 
-New Question what if two programe want to run at particular time, which should run. answerd with OS POLICY , mechanisms (such as the ability to run multiple programs at once)
+New Question what if two programe want to run at particular time, which should run. 
+answerd with OS POLICY , mechanisms (such as the ability to run multiple programs at once)
 
 
 2.2 Virtualizing Memory
@@ -43,7 +44,7 @@ accessed by some instruction load,store;
 local>>gcc -o mem mem.c -Wall
 local>>./mem
 malloc() allocate some memory it equavilant to new in c++
-getpid() process idenrifier uniqur per running process;
+getpid() process idenrifier unique per running process;
 one programe >> As the program runs, it slowly updates(allocated memory address at XZXXXXZ) the value and prints out the result 
 
 prompt> ./mem &; ./mem &
@@ -76,7 +77,8 @@ what File system do ?
 -Figure out where on disk this new data will reside, keep traking of it in various structures the file system maintains.
 -Doing so needs I\O issuing requests to underlying storage device, to eighter read existing structures or update it.
 
-Fortunately, the OS provides a standard and simpleway to access devices through its system calls. Thus, the OS is sometimes seen as a standard library.
+Fortunately, the OS provides a standard and simple way to access devices through its system calls. 
+Thus, the OS is sometimes seen as a standard library.
 
 to handle system craches while writing ?
 -intricate write protocol, such as journaling or copy-on-write;
@@ -86,13 +88,16 @@ to handle system craches while writing ?
 2.5 Design Goals
 
 most basic goal is to build up some abstraction in order to make the system easy to use; 
-Abstraction is fundamental to every thing in CS, makes it possible to write large problem by dividing it into small pieces; such as Write c no care of assembly
-write assembly no care about logicgates, logic gates of process no care about trasistors;
+Abstraction is fundamental to every thing in CS, makes it possible to write large problem by dividing it into small pieces;
+such as Write c no care of assembly
+write assembly no care about logicgates, 
+logic gates of process no care about trasistors;
 
 high performance, another way to say minimized the OVERHEADS of the OS;
 overhead is arise in many forms, extra time(more instruction), extra space(memory or disk) we should minimize them.
 
-protection between applications; many programs at same time, want to make sure bad behavior or malicious one  does not harm others, so harm OS itself .
+protection between applications; many programs at same time, want to make sure bad behavior or malicious one  does not harm others, 
+so harm OS itself .
 isolatiob heart of one of the main principles underlaying an operating systems
 
 High degree of reliability runung non-stop
